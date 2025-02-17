@@ -1,16 +1,16 @@
 import pygame as pg
 import time
-import RK4
+import engine
 
 def main():
     WIDTH, HEIGHT = 600, 600
     window = pg.display.set_mode((WIDTH, HEIGHT))
     
-    for θ1, θ2, ω1, ω2 in RK4.calculate():
+    for θ1, θ2, ω1, ω2 in engine.calculate():
         window.fill((255, 255, 255))
 
-        x1, y1 =  RK4.polar_to_cart(RK4.l1, θ1) 
-        x2, y2 =  RK4.polar_to_cart(RK4.l2, θ2)
+        x1, y1 =  engine.polar_to_cart(engine.l1, θ1) 
+        x2, y2 =  engine.polar_to_cart(engine.l2, θ2)
         x2 += x1
         y2 += y1
 
