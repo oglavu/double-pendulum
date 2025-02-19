@@ -1,7 +1,7 @@
 #include "stdio.h"
 
 #define N 256
-#define M 1001
+#define M 100000
 __device__ double h = 0.025;
 __device__ double g = 9.81;
 
@@ -52,17 +52,17 @@ __device__ double fω2(double t, double θ1, double θ2, double ω1, double ω2)
     return dividend / divisor;
 }
 
-__global__ void RK4(double4 *matrix, double t) {
+__global__ void RK4(double4 *initArray, double4 *dataArray) {
     // Get thread index in 2D
-    int      ix    = threadIdx.x * M;
-    double4 *start = &matrix[ix];
+    double   t     = 0;
+    int      ix    = threadIdx.x;
 
-    double θ1 = start[0].x,
-        θ2 = start[0].y,
-        ω1 = start[0].z,
-        ω2 = start[0].w;
+    double θ1 = initArray[0].x,
+        θ2 = initArray[0].y,
+        ω1 = initArray[0].z,
+        ω2 = initArray[0].w;
 
-    for (int i=0; i<M-1; ++i) {
+    for (int i=0; i<M; ++i) {
 
         double k1θ1 = fθ1(t, θ1, θ2, ω1, ω2);
         double k1θ2 = fθ2(t, θ1, θ2, ω1, ω2);
@@ -84,48 +84,54 @@ __global__ void RK4(double4 *matrix, double t) {
         double k4ω1 = fω1(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
         double k4ω2 = fω2(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
     
-        start[i+1].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
-        start[i+1].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
-        start[i+1].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
-        start[i+1].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
-
+        dataArray[ix*M + i].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
+        dataArray[ix*M + i].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
+        dataArray[ix*M + i].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
+        dataArray[ix*M + i].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
+    
     }
     
 }
 
-
-
 int main() {
-    double4 *d_matrix, *h_matrix;
+    double4 *d_initArray, *h_initArray,
+            *d_dataArray, *h_dataArray;
 
-    size_t matrix_size = N * M * sizeof(double4);
+    size_t init_size = N * sizeof(double4);
+    size_t data_size = N * M * sizeof(double4);
     
-    h_matrix = (double4*)malloc(matrix_size);
-    cudaMalloc(&d_matrix, matrix_size);
+    h_initArray = (double4*)malloc(init_size);
+    h_dataArray = (double4*)malloc(data_size);
+    cudaMalloc(&d_initArray, init_size);
+    cudaMalloc(&d_dataArray, data_size);
 
     for (int i=0; i<N; i++) {
-        h_matrix[i*M].x = 0.785;
-        h_matrix[i*M].y = 1.570;
-        h_matrix[i*M].z = 3.1;
-        h_matrix[i*M].w = 1.1;
+        h_initArray[i].x = 0.785;
+        h_initArray[i].y = 1.570;
+        h_initArray[i].z = 3.1;
+        h_initArray[i].w = 1.1;
     }
 
-    cudaMemcpy(d_matrix, h_matrix, matrix_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_initArray, h_initArray, init_size, cudaMemcpyHostToDevice);
 
-    RK4<<<1, N>>>(d_matrix, 0);
+    RK4<<<1, N>>>(d_initArray, d_dataArray);
 
-    cudaMemcpy(h_matrix, d_matrix, matrix_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_dataArray, d_dataArray, data_size, cudaMemcpyDeviceToHost);
 
     for(int i=0; i<N; i++) {
+        printf("(%f %f %f %f) \n", 
+            h_initArray[i].x, h_initArray[i].y, h_initArray[i].z, h_initArray[i].w);
         for(int j=0; j<M; j++) {
-            double4 e = h_matrix[i * M + j];
-            printf("(%f %f %f %f) \n", e.x, e.y, e.z, e.w);
+            double4 e = h_dataArray[i * M + j];
+            printf("(%f %f %f %f)\n", e.x, e.y, e.z, e.w);
         }
         printf("\n");
     }
 
-    cudaFree(d_matrix);
-    free(h_matrix);
+    cudaFree(d_initArray);
+    cudaFree(d_dataArray);
+    free(h_initArray);
+    free(h_dataArray);
 
     return 0;
 }
