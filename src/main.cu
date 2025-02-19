@@ -1,14 +1,15 @@
 #include "stdio.h"
 
 #define N 256
-#define M 1000
-__device__ double h = 0.025;
-__device__ double g = 9.81;
+#define M 10000
 
-__constant__ double   l1 = 1;
-__constant__ double   l2 = 1;
-__constant__ double   m1 = 1;
-__constant__ double   m2 = 1;
+__constant__ double h = 0.025;
+__constant__ double g = 9.81;
+
+__constant__ double l1;
+__constant__ double l2;
+__constant__ double m1;
+__constant__ double m2;
 
 __device__ double fθ1(double t, double θ1, double θ2, double ω1, double ω2) {
     return ω1;
@@ -84,16 +85,48 @@ __global__ void RK4(double4 *initArray, double4 *dataArray) {
         double k4ω1 = fω1(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
         double k4ω2 = fω2(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
     
-        dataArray[i].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
-        dataArray[i].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
-        dataArray[i].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
-        dataArray[i].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
+        dataArray[ix*M + i].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
+        dataArray[ix*M + i].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
+        dataArray[ix*M + i].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
+        dataArray[ix*M + i].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
     
     }
     
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+
+    double h_l1 = 1, h_l2 = 1, 
+        h_m1 = 1, h_m2 = 1,
+        h_g  = 9.81,
+        h_h  = 0.025;
+    for (int i=1; i<argc; i += 2) {
+        if (argv[i][0] != '-') {
+            printf("Bad cmd line args"); exit(-1);
+        } 
+        if (strcmp(argv[i], "-l1") == 0) {
+            h_l1 = atof(argv[i+1]);
+        } else if (strcmp(argv[i], "-l2") == 0) {
+            h_l2 = atof(argv[i+1]);
+        } else if (strcmp(argv[i], "-m1") == 0) {
+            h_m1 = atof(argv[i+1]);
+        } else if (strcmp(argv[i], "-m2") == 0) {
+            h_m2 = atof(argv[i+1]);
+        } else if (strcmp(argv[i], "-g") == 0) {
+            h_g = atof(argv[i+1]);
+        } else if (strcmp(argv[i], "-m2") == 0) {
+            h_h = atof(argv[i+1]);
+        }
+
+    }
+
+    cudaMemcpyToSymbol(l1, &h_l1, sizeof(double));
+    cudaMemcpyToSymbol(l2, &h_l2, sizeof(double));
+    cudaMemcpyToSymbol(m1, &h_m1, sizeof(double));
+    cudaMemcpyToSymbol(m2, &h_m2, sizeof(double));
+    cudaMemcpyToSymbol(g,  &h_g,  sizeof(double));
+    cudaMemcpyToSymbol(h,  &h_h,  sizeof(double));
+
     double4 *d_initArray, *h_initArray,
             *d_dataArray, *h_dataArray;
 
