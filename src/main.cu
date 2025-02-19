@@ -1,7 +1,7 @@
 #include "stdio.h"
 
-#define N 128
-#define M 100001
+#define N 256
+#define M 1001
 __device__ double h = 0.025;
 __device__ double g = 9.81;
 
@@ -10,43 +10,43 @@ __constant__ double   l2 = 1;
 __constant__ double   m1 = 1;
 __constant__ double   m2 = 1;
 
-__device__ double fteta1(double t, double teta1, double teta2, double omega1, double omega2) {
-    return omega1;
+__device__ double fθ1(double t, double θ1, double θ2, double ω1, double ω2) {
+    return ω1;
 }
 
-__device__ double fteta2(double t, double teta1, double teta2, double omega1, double omega2) {
-    return omega2;
+__device__ double fθ2(double t, double θ1, double θ2, double ω1, double ω2) {
+    return ω2;
 }
 
-__device__ double fomega1(double t, double teta1, double teta2, double omega1, double omega2) {
-    double deltateta = teta1 - teta2;
+__device__ double fω1(double t, double θ1, double θ2, double ω1, double ω2) {
+    double Δθ = θ1 - θ2;
 
     double dividend = (
-        -g*(2*m1+m2)*sin(teta1) 
-        -m2*g*sin(teta1-2*teta2) 
-        -2*sin(deltateta)*m2*(l2*omega2*omega2 + l1*cos(deltateta)*omega1*omega1)
+        -g*(2*m1+m2)*sin(θ1) 
+        -m2*g*sin(θ1-2*θ2) 
+        -2*sin(Δθ)*m2*(l2*ω2*ω2 + l1*cos(Δθ)*ω1*ω1)
     );
 
     double divisor = (
-        l1*(2*m1 + m2 - m2*cos(2*deltateta))
+        l1*(2*m1 + m2 - m2*cos(2*Δθ))
     );
 
     return dividend / divisor;
 }
 
-__device__ double fomega2(double t, double teta1, double teta2, double omega1, double omega2) {
-    double deltateta = teta1 - teta2;
+__device__ double fω2(double t, double θ1, double θ2, double ω1, double ω2) {
+    double Δθ = θ1 - θ2;
 
     double dividend = (
-        2*sin(deltateta)*(
-            (m1+m2)*l1*omega1*omega1 + 
-            g*(m1+m2)*cos(teta1) + 
-            m2*l2*cos(deltateta)*omega2*omega2
+        2*sin(Δθ)*(
+            (m1+m2)*l1*ω1*ω1 + 
+            g*(m1+m2)*cos(θ1) + 
+            m2*l2*cos(Δθ)*ω2*ω2
         )
     );
 
     double divisor = (
-        l2*(2*m1 + m2 - m2*cos(2*deltateta))
+        l2*(2*m1 + m2 - m2*cos(2*Δθ))
     );
 
     return dividend / divisor;
@@ -57,37 +57,37 @@ __global__ void RK4(double4 *matrix, double t) {
     int      ix    = threadIdx.x * M;
     double4 *start = &matrix[ix];
 
-    double teta1 = start[0].x,
-        teta2 = start[0].y,
-        omega1 = start[0].z,
-        omega2 = start[0].w;
+    double θ1 = start[0].x,
+        θ2 = start[0].y,
+        ω1 = start[0].z,
+        ω2 = start[0].w;
 
     for (int i=0; i<M-1; ++i) {
 
-        double k1teta1 = fteta1(t, teta1, teta2, omega1, omega2);
-        double k1teta2 = fteta2(t, teta1, teta2, omega1, omega2);
-        double k1omega1 = fomega1(t, teta1, teta2, omega1, omega2);
-        double k1omega2 = fomega2(t, teta1, teta2, omega1, omega2);
+        double k1θ1 = fθ1(t, θ1, θ2, ω1, ω2);
+        double k1θ2 = fθ2(t, θ1, θ2, ω1, ω2);
+        double k1ω1 = fω1(t, θ1, θ2, ω1, ω2);
+        double k1ω2 = fω2(t, θ1, θ2, ω1, ω2);
     
-        double k2teta1 = fteta1(t + h/2, teta1 + h*k1teta1/2, teta2 + h*k1teta2/2, omega1 + h*k1omega1/2, omega2 + h*k1omega2/2);
-        double k2teta2 = fteta2(t + h/2, teta1 + h*k1teta1/2, teta2 + h*k1teta2/2, omega1 + h*k1omega1/2, omega2 + h*k1omega2/2);
-        double k2omega1 = fomega1(t + h/2, teta1 + h*k1teta1/2, teta2 + h*k1teta2/2, omega1 + h*k1omega1/2, omega2 + h*k1omega2/2);
-        double k2omega2 = fomega2(t + h/2, teta1 + h*k1teta1/2, teta2 + h*k1teta2/2, omega1 + h*k1omega1/2, omega2 + h*k1omega2/2);
+        double k2θ1 = fθ1(t + h/2, θ1 + h*k1θ1/2, θ2 + h*k1θ2/2, ω1 + h*k1ω1/2, ω2 + h*k1ω2/2);
+        double k2θ2 = fθ2(t + h/2, θ1 + h*k1θ1/2, θ2 + h*k1θ2/2, ω1 + h*k1ω1/2, ω2 + h*k1ω2/2);
+        double k2ω1 = fω1(t + h/2, θ1 + h*k1θ1/2, θ2 + h*k1θ2/2, ω1 + h*k1ω1/2, ω2 + h*k1ω2/2);
+        double k2ω2 = fω2(t + h/2, θ1 + h*k1θ1/2, θ2 + h*k1θ2/2, ω1 + h*k1ω1/2, ω2 + h*k1ω2/2);
         
-        double k3teta1 = fteta1(t + h/2, teta1 + h*k2teta1/2, teta2 + h*k2teta2/2, omega1 + h*k2omega1/2, omega2 + h*k2omega2/2);
-        double k3teta2 = fteta2(t + h/2, teta1 + h*k2teta1/2, teta2 + h*k2teta2/2, omega1 + h*k2omega1/2, omega2 + h*k2omega2/2);
-        double k3omega1 = fomega1(t + h/2, teta1 + h*k2teta1/2, teta2 + h*k2teta2/2, omega1 + h*k2omega1/2, omega2 + h*k2omega2/2);
-        double k3omega2 = fomega2(t + h/2, teta1 + h*k2teta1/2, teta2 + h*k2teta2/2, omega1 + h*k2omega1/2, omega2 + h*k2omega2/2);
+        double k3θ1 = fθ1(t + h/2, θ1 + h*k2θ1/2, θ2 + h*k2θ2/2, ω1 + h*k2ω1/2, ω2 + h*k2ω2/2);
+        double k3θ2 = fθ2(t + h/2, θ1 + h*k2θ1/2, θ2 + h*k2θ2/2, ω1 + h*k2ω1/2, ω2 + h*k2ω2/2);
+        double k3ω1 = fω1(t + h/2, θ1 + h*k2θ1/2, θ2 + h*k2θ2/2, ω1 + h*k2ω1/2, ω2 + h*k2ω2/2);
+        double k3ω2 = fω2(t + h/2, θ1 + h*k2θ1/2, θ2 + h*k2θ2/2, ω1 + h*k2ω1/2, ω2 + h*k2ω2/2);
         
-        double k4teta1 = fteta1(t + h, teta1 + h*k3teta1, teta2 + h*k3teta2, omega1 + h*k3omega1, omega2 + h*k3omega2);
-        double k4teta2 = fteta2(t + h, teta1 + h*k3teta1, teta2 + h*k3teta2, omega1 + h*k3omega1, omega2 + h*k3omega2);
-        double k4omega1 = fomega1(t + h, teta1 + h*k3teta1, teta2 + h*k3teta2, omega1 + h*k3omega1, omega2 + h*k3omega2);
-        double k4omega2 = fomega2(t + h, teta1 + h*k3teta1, teta2 + h*k3teta2, omega1 + h*k3omega1, omega2 + h*k3omega2);
+        double k4θ1 = fθ1(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
+        double k4θ2 = fθ2(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
+        double k4ω1 = fω1(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
+        double k4ω2 = fω2(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
     
-        start[i+1].x =  teta1 = teta1 + h/6 * (k1teta1 + 2*k2teta1 + 2*k3teta1 + k4teta1);
-        start[i+1].y =  teta2 = teta2 + h/6 * (k1teta2 + 2*k2teta2 + 2*k3teta2 + k4teta2);
-        start[i+1].z =  omega1 = omega1 + h/6 * (k1omega1 + 2*k2omega1 + 2*k3omega1 + k4omega1);
-        start[i+1].w =  omega2 = omega2 + h/6 * (k1omega2 + 2*k2omega2 + 2*k3omega2 + k4omega2);
+        start[i+1].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
+        start[i+1].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
+        start[i+1].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
+        start[i+1].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
 
     }
     
