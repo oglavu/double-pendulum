@@ -1,7 +1,7 @@
 #include "stdio.h"
 
 #define N 256
-#define M 100000
+#define M 1000
 __device__ double h = 0.025;
 __device__ double g = 9.81;
 
@@ -84,10 +84,10 @@ __global__ void RK4(double4 *initArray, double4 *dataArray) {
         double k4ω1 = fω1(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
         double k4ω2 = fω2(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
     
-        dataArray[ix*M + i].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
-        dataArray[ix*M + i].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
-        dataArray[ix*M + i].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
-        dataArray[ix*M + i].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
+        dataArray[i].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
+        dataArray[i].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
+        dataArray[i].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
+        dataArray[i].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
     
     }
     
@@ -123,7 +123,7 @@ int main() {
             h_initArray[i].x, h_initArray[i].y, h_initArray[i].z, h_initArray[i].w);
         for(int j=0; j<M; j++) {
             double4 e = h_dataArray[i * M + j];
-            printf("(%f %f %f %f)\n", e.x, e.y, e.z, e.w);
+            printf("(%f %f %f %f) \n", e.x, e.y, e.z, e.w);
         }
         printf("\n");
     }
