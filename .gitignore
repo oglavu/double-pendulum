@@ -3,5 +3,7 @@
 *.exp
 *.lib
 *.txt
+*.bin
 /build
 /bin
+/.vscode
