@@ -1,8 +1,8 @@
 #include "stdio.h"
 #include <windows.h>
 
-#define N 256
-#define M 10000
+#define N 512
+#define M 100000
 
 __constant__ double h;
 __constant__ double g;
@@ -100,7 +100,7 @@ void read_args(int argc, char* argv[]) {
         h_m1 = 1, h_m2 = 1,
         h_g  = 9.81,
         h_h  = 0.025;
-    for (int i=1; i<argc; i += 2) {
+    for (int i=3; i<argc; i += 2) {
         if (argv[i][0] != '-') {
             printf("Bad cmd line args"); exit(-1);
         } 
@@ -129,64 +129,131 @@ void read_args(int argc, char* argv[]) {
 
 }
 
+struct mmap_t {
+    HANDLE file;
+    HANDLE hMap;
+    size_t sz;
+    void*  h_array;
+};
+
+int map_file_rd(const char* filename, struct mmap_t* map) {
+
+    map->file = CreateFileA(
+        filename, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+    );
+    if (map->file == INVALID_HANDLE_VALUE) {
+        printf("Error opening read file: %d\n", GetLastError());
+        return -1;
+    }
+
+    SetFilePointer(map->file, map->sz, 0, FILE_BEGIN);
+    SetEndOfFile(map->file);
+
+    // create mapping
+    map->hMap = CreateFileMapping(
+        map->file, 0, PAGE_READWRITE, 0, map->sz, 0
+    );
+    if (!map->hMap) {
+        printf("Error creating file mapping: %d\n", GetLastError());
+        CloseHandle(map->file);
+        return -2;
+    }
+
+    map->h_array = MapViewOfFile(map->hMap, FILE_MAP_WRITE, 0, 0, map->sz);
+    if (!map->h_array) {
+        printf("Error mapping view of file: %d\n", GetLastError());
+        CloseHandle(map->hMap);
+        CloseHandle(map->file);
+        return -1;
+    }
+
+    return 0;
+}
+
+int map_file_wr(const char* filename, struct mmap_t* map) {
+    map->file = CreateFileA(
+        filename, GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0
+    );
+    if (map->file == INVALID_HANDLE_VALUE) {
+        printf("Error opening write file: %d\n", GetLastError());
+        return -1;
+    }
+
+    SetFilePointer(map->file, map->sz, 0, FILE_BEGIN);
+    SetEndOfFile(map->file);
+
+    // create mapping
+    map->hMap = CreateFileMapping(
+        map->file, 0, PAGE_READWRITE, 0, map->sz, 0
+    );
+    if (!map->hMap) {
+        printf("Error creating file mapping: %d\n", GetLastError());
+        CloseHandle(map->file);
+        return -2;
+    }
+
+    map->h_array = MapViewOfFile(map->hMap, FILE_MAP_WRITE, 0, 0, map->sz);
+    if (!map->h_array) {
+        printf("Error mapping view of file: %d\n", GetLastError());
+        CloseHandle(map->hMap);
+        CloseHandle(map->file);
+        return -1;
+    }
+
+    return 0;
+}
+
+void unmap_file(struct mmap_t* map) {
+    FlushViewOfFile(map->h_array, map->sz);
+    UnmapViewOfFile(map->h_array);
+    CloseHandle(map->hMap);
+    CloseHandle(map->file);
+}
 
 int main(int argc, char* argv[]) {
+    // usage: main.exe <input_file> <output_file> [<options>]
+
+    // read args
+    if (argc < 3) {
+        printf("Too few args.\n Usage: main.exe <input_file> <output_file> [<options>]");
+        return -1;
+    }
+
+    char* srcFilename = (char*)malloc(100*sizeof(char)), 
+        * dstFilename = (char*)malloc(100*sizeof(char));
+    strcpy(srcFilename, argv[1]);
+    strcpy(dstFilename, argv[2]);
 
     read_args(argc, argv);
 
-    double4 *d_initArray, *h_initArray,
-            *d_dataArray, *h_dataArray;
+    // open files
+    double4 *d_initArray,
+            *d_dataArray;
 
     size_t init_size = N * sizeof(double4);
     size_t data_size = N * M * sizeof(double4);
+
+    struct mmap_t initMap, dataMap;
+    initMap.sz = init_size;
+    dataMap.sz = data_size;
+
+    if (map_file_rd(srcFilename, &initMap) < 0) {
+        return -2;
+    } 
+    if (map_file_wr(dstFilename, &dataMap) < 0) {
+        unmap_file(&initMap);
+        return -2;
+    }
     
-    h_initArray = (double4*)malloc(init_size);
-
-    HANDLE h_dataFile = CreateFileA(
-        "test.txt", GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0
-    );
-
-    if (h_dataFile == INVALID_HANDLE_VALUE) {
-        printf("Error opening file: %d\n", GetLastError());
-        return -1;
-    }
-
-    SetFilePointer(h_dataFile, data_size, 0, FILE_BEGIN);
-    SetEndOfFile(h_dataFile);
-
-    // Create file mapping
-    HANDLE hMap = CreateFileMapping(h_dataFile, NULL, PAGE_READWRITE, 0, data_size, NULL);
-    if (!hMap) {
-        printf("Error creating file mapping: %d\n", GetLastError());
-        CloseHandle(h_dataFile);
-        return -1;
-    }
-
-    // Map file to memory
-    h_dataArray = (double4 *)MapViewOfFile(hMap, FILE_MAP_WRITE, 0, 0, data_size);
-    if (!h_dataArray) {
-        printf("Error mapping view of file: %d\n", GetLastError());
-        CloseHandle(hMap);
-        CloseHandle(h_dataFile);
-        return -1;
-    }
-
-
+    // cuda op
     cudaMalloc(&d_initArray, init_size);
     cudaMalloc(&d_dataArray, data_size);
 
-    for (int i=0; i<N; i++) {
-        h_initArray[i].x = 0.785;
-        h_initArray[i].y = 1.570;
-        h_initArray[i].z = 3.1;
-        h_initArray[i].w = 1.1;
-    }
-
-    cudaMemcpy(d_initArray, h_initArray, init_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_initArray, initMap.h_array, init_size, cudaMemcpyHostToDevice);
 
     RK4<<<1, N>>>(d_initArray, d_dataArray);
 
-    cudaMemcpy(h_dataArray, d_dataArray, data_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(dataMap.h_array, d_dataArray, data_size, cudaMemcpyDeviceToHost);
 
     // for(int i=0; i<N; i++) {
     //     printf("(%f %f %f %f) \n", 
@@ -198,17 +265,12 @@ int main(int argc, char* argv[]) {
     //     printf("\n");
     // }
 
+    // cleanup
     cudaFree(d_initArray);
     cudaFree(d_dataArray);
-    free(h_initArray);
-    free(h_dataArray);
 
-    FlushViewOfFile(h_dataArray, data_size);
-
-    // Cleanup
-    UnmapViewOfFile(h_dataArray);
-    CloseHandle(hMap);
-    CloseHandle(h_dataFile);
+    unmap_file(&initMap);
+    unmap_file(&dataMap);
 
     return 0;
 }
