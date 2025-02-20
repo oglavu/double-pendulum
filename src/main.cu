@@ -1,10 +1,11 @@
 #include "stdio.h"
+#include <windows.h>
 
 #define N 256
 #define M 10000
 
-__constant__ double h = 0.025;
-__constant__ double g = 9.81;
+__constant__ double h;
+__constant__ double g;
 
 __constant__ double l1;
 __constant__ double l2;
@@ -94,8 +95,7 @@ __global__ void RK4(double4 *initArray, double4 *dataArray) {
     
 }
 
-int main(int argc, char* argv[]) {
-
+void read_args(int argc, char* argv[]) {
     double h_l1 = 1, h_l2 = 1, 
         h_m1 = 1, h_m2 = 1,
         h_g  = 9.81,
@@ -127,6 +127,13 @@ int main(int argc, char* argv[]) {
     cudaMemcpyToSymbol(g,  &h_g,  sizeof(double));
     cudaMemcpyToSymbol(h,  &h_h,  sizeof(double));
 
+}
+
+
+int main(int argc, char* argv[]) {
+
+    read_args(argc, argv);
+
     double4 *d_initArray, *h_initArray,
             *d_dataArray, *h_dataArray;
 
@@ -134,7 +141,37 @@ int main(int argc, char* argv[]) {
     size_t data_size = N * M * sizeof(double4);
     
     h_initArray = (double4*)malloc(init_size);
-    h_dataArray = (double4*)malloc(data_size);
+
+    HANDLE h_dataFile = CreateFileA(
+        "test.txt", GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0
+    );
+
+    if (h_dataFile == INVALID_HANDLE_VALUE) {
+        printf("Error opening file: %d\n", GetLastError());
+        return -1;
+    }
+
+    SetFilePointer(h_dataFile, data_size, 0, FILE_BEGIN);
+    SetEndOfFile(h_dataFile);
+
+    // Create file mapping
+    HANDLE hMap = CreateFileMapping(h_dataFile, NULL, PAGE_READWRITE, 0, data_size, NULL);
+    if (!hMap) {
+        printf("Error creating file mapping: %d\n", GetLastError());
+        CloseHandle(h_dataFile);
+        return -1;
+    }
+
+    // Map file to memory
+    h_dataArray = (double4 *)MapViewOfFile(hMap, FILE_MAP_WRITE, 0, 0, data_size);
+    if (!h_dataArray) {
+        printf("Error mapping view of file: %d\n", GetLastError());
+        CloseHandle(hMap);
+        CloseHandle(h_dataFile);
+        return -1;
+    }
+
+
     cudaMalloc(&d_initArray, init_size);
     cudaMalloc(&d_dataArray, data_size);
 
@@ -151,20 +188,27 @@ int main(int argc, char* argv[]) {
 
     cudaMemcpy(h_dataArray, d_dataArray, data_size, cudaMemcpyDeviceToHost);
 
-    for(int i=0; i<N; i++) {
-        printf("(%f %f %f %f) \n", 
-            h_initArray[i].x, h_initArray[i].y, h_initArray[i].z, h_initArray[i].w);
-        for(int j=0; j<M; j++) {
-            double4 e = h_dataArray[i * M + j];
-            printf("(%f %f %f %f) \n", e.x, e.y, e.z, e.w);
-        }
-        printf("\n");
-    }
+    // for(int i=0; i<N; i++) {
+    //     printf("(%f %f %f %f) \n", 
+    //         h_initArray[i].x, h_initArray[i].y, h_initArray[i].z, h_initArray[i].w);
+    //     for(int j=0; j<M; j++) {
+    //         double4 e = h_dataArray[i * M + j];
+    //         printf("(%f %f %f %f) \n", e.x, e.y, e.z, e.w);
+    //     }
+    //     printf("\n");
+    // }
 
     cudaFree(d_initArray);
     cudaFree(d_dataArray);
     free(h_initArray);
     free(h_dataArray);
+
+    FlushViewOfFile(h_dataArray, data_size);
+
+    // Cleanup
+    UnmapViewOfFile(h_dataArray);
+    CloseHandle(hMap);
+    CloseHandle(h_dataFile);
 
     return 0;
 }
