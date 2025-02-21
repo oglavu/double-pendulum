@@ -255,16 +255,6 @@ int main(int argc, char* argv[]) {
 
     cudaMemcpy(dataMap.h_array, d_dataArray, data_size, cudaMemcpyDeviceToHost);
 
-    // for(int i=0; i<N; i++) {
-    //     printf("(%f %f %f %f) \n", 
-    //         h_initArray[i].x, h_initArray[i].y, h_initArray[i].z, h_initArray[i].w);
-    //     for(int j=0; j<M; j++) {
-    //         double4 e = h_dataArray[i * M + j];
-    //         printf("(%f %f %f %f) \n", e.x, e.y, e.z, e.w);
-    //     }
-    //     printf("\n");
-    // }
-
     // cleanup
     cudaFree(d_initArray);
     cudaFree(d_dataArray);
