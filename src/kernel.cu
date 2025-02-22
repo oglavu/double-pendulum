@@ -3,6 +3,17 @@
 
 using namespace kernel;
 
+void kernel::set_constants(const struct kernel::constants_t& c) {
+    cudaMemcpyToSymbol(l1, &c.l1, sizeof(double));
+    cudaMemcpyToSymbol(l2, &c.l2, sizeof(double));
+    cudaMemcpyToSymbol(m1, &c.m1, sizeof(double));
+    cudaMemcpyToSymbol(m2, &c.m2, sizeof(double));
+    cudaMemcpyToSymbol(g,  &c.g,  sizeof(double));
+    cudaMemcpyToSymbol(h,  &c.h,  sizeof(double));
+    cudaMemcpyToSymbol(N,  &c.N,  sizeof(uint32_t));
+    cudaMemcpyToSymbol(M,  &c.M,  sizeof(uint32_t));
+}
+
 
 __device__ double kernel::fθ1(double t, double θ1, double θ2, double ω1, double ω2) {
     return ω1;
@@ -84,5 +95,8 @@ __global__ void kernel::RK4(double4 *initArray, double4 *dataArray) {
         dataArray[ix*M + i].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
     
     }
+
+    dataArray[0].x = dataArray[0].y = l1;
+    dataArray[0].z = dataArray[0].w = m1;
     
 }

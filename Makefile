@@ -16,7 +16,7 @@ all:
 	python $(replacer) $(SRC_DIR)/kernel.cuh $(BUILD_DIR)/kernel.cuh
 	python $(replacer) $(SRC_DIR)/kernel.cu $(BUILD_DIR)/kernel.cu
 	python $(replacer) $(SRC_DIR)/main.cu $(BUILD_DIR)/main.cu
-	nvcc -ccbin $(CCBIN) $(NVCCFLAG) -c $(BUILD_DIR)/kernel.cu -o $(BUILD_DIR)/kernel.obj
+	nvcc -ccbin $(CCBIN) $(NVCCFLAG) -c $(BUILD_DIR)/kernel.cu  -o $(BUILD_DIR)/kernel.obj
 	nvcc -ccbin $(CCBIN) $(NVCCFLAG) -c $(BUILD_DIR)/main.cu -o $(BUILD_DIR)/main.obj
 	nvcc -ccbin $(CCBIN) $(NVCCFLAG) $(BUILD_DIR)/kernel.obj $(BUILD_DIR)/main.obj -o $(BIN_DIR)/main.exe 
 

@@ -2,37 +2,52 @@
 #include <windows.h>
 #include "kernel.cuh"
 
-void read_args(int argc, char* argv[]) {
-    double h_l1 = 1, h_l2 = 1, 
-        h_m1 = 1, h_m2 = 1,
-        h_g  = 9.81,
-        h_h  = 0.025;
+
+struct args_t {
+    kernel::constants_t consts = {
+        1, 1,  // l1, l2
+        1, 1,  // m1, m2
+        0.025, // h
+        9.81,  //g
+    };
+    char srcFilename[100];
+    char dstFilename[100];
+
+};
+
+void read_args(int argc, char* argv[], args_t& myArgs) {
+
+    // read args
+    if (argc < 5) {
+        printf("Too few args.\n Usage: main.exe <input_file> <output_file> [<options>]");
+        exit(-1);
+    }
+
+    strcpy(myArgs.srcFilename, argv[1]);
+    strcpy(myArgs.dstFilename, argv[2]);
+
+    myArgs.consts.N = atol(argv[3]);
+    myArgs.consts.M = atol(argv[4]);
+    
     for (int i=5; i<argc; i += 2) {
         if (argv[i][0] != '-') {
             printf("Bad cmd line args"); exit(-1);
         } 
         if (strcmp(argv[i], "-l1") == 0) {
-            h_l1 = atof(argv[i+1]);
+            myArgs.consts.l1 = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-l2") == 0) {
-            h_l2 = atof(argv[i+1]);
+            myArgs.consts.l2 = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-m1") == 0) {
-            h_m1 = atof(argv[i+1]);
+            myArgs.consts.m1 = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-m2") == 0) {
-            h_m2 = atof(argv[i+1]);
+            myArgs.consts.m2 = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-g") == 0) {
-            h_g = atof(argv[i+1]);
+            myArgs.consts.g = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-m2") == 0) {
-            h_h = atof(argv[i+1]);
+            myArgs.consts.h = atof(argv[i+1]);
         }
 
     }
-
-    cudaMemcpyToSymbol(kernel::l1, &h_l1, sizeof(double));
-    cudaMemcpyToSymbol(kernel::l2, &h_l2, sizeof(double));
-    cudaMemcpyToSymbol(kernel::m1, &h_m1, sizeof(double));
-    cudaMemcpyToSymbol(kernel::m2, &h_m2, sizeof(double));
-    cudaMemcpyToSymbol(kernel::g,  &h_g,  sizeof(double));
-    cudaMemcpyToSymbol(kernel::h,  &h_h,  sizeof(double));
 
 }
 
@@ -120,55 +135,37 @@ void unmap_file(struct mmap_t* map) {
 int main(int argc, char* argv[]) {
     // usage: main.exe <input_file> <output_file> <num_instances> <num_iterations> [<options>]
 
-    // read args
-    if (argc < 5) {
-        printf("Too few args.\n Usage: main.exe <input_file> <output_file> [<options>]");
-        return -1;
-    }
+    args_t myArgs;
 
-    char* srcFilename = (char*)malloc(100*sizeof(char)), 
-        * dstFilename = (char*)malloc(100*sizeof(char));
-    strcpy(srcFilename, argv[1]);
-    strcpy(dstFilename, argv[2]);
-
-    const uint32_t N = atol(argv[3]);
-    const uint32_t M = atol(argv[4]);
-
-    read_args(argc, argv);
+    read_args(argc, argv, myArgs);
+    kernel::set_constants(myArgs.consts);
 
     // open files
     double4 *d_initArray,
             *d_dataArray;
 
-    size_t init_size = N * sizeof(double4);
-    size_t data_size = N * M * sizeof(double4);
+    size_t init_size = myArgs.consts.N * sizeof(double4);
+    size_t data_size = myArgs.consts.N * myArgs.consts.M * sizeof(double4);
 
     struct mmap_t initMap, dataMap;
     initMap.sz = init_size;
     dataMap.sz = data_size;
 
-    if (map_file_rd(srcFilename, &initMap) < 0) {
+    if (map_file_rd(myArgs.srcFilename, &initMap) < 0) {
         return -2;
     } 
-    if (map_file_wr(dstFilename, &dataMap) < 0) {
+    if (map_file_wr(myArgs.dstFilename, &dataMap) < 0) {
         unmap_file(&initMap);
         return -2;
     }
 
-    for (int i=0; i<1024; i++) {
-        printf("%lf ", ((double4*)initMap.h_array)[i].x);
-    }
-    
     // cuda op
-    cudaMemcpyToSymbol(kernel::N,  &N,  sizeof(uint32_t));
-    cudaMemcpyToSymbol(kernel::M,  &M,  sizeof(uint32_t));
-
     cudaMalloc(&d_initArray, init_size);
     cudaMalloc(&d_dataArray, data_size);
 
     cudaMemcpy(d_initArray, initMap.h_array, init_size, cudaMemcpyHostToDevice);
 
-    kernel::RK4<<<1, N>>>(d_initArray, d_dataArray);
+    kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
 
     cudaMemcpy(dataMap.h_array, d_dataArray, data_size, cudaMemcpyDeviceToHost);
 
@@ -178,8 +175,6 @@ int main(int argc, char* argv[]) {
 
     unmap_file(&initMap);
     unmap_file(&dataMap);
-
-    delete[] srcFilename, dstFilename;
 
     return 0;
 }
