@@ -62,12 +62,12 @@ __global__ void kernel::RK4(double4 *initArray, double4 *dataArray) {
     double   t     = 0;
     int      ix    = threadIdx.x;
 
-    double θ1 = initArray[0].x,
-        θ2 = initArray[0].y,
-        ω1 = initArray[0].z,
-        ω2 = initArray[0].w;
+    double θ1 = initArray[ix].x,
+        θ2 = initArray[ix].y,
+        ω1 = initArray[ix].z,
+        ω2 = initArray[ix].w;
 
-    for (int i=0; i<M; ++i) {
+    for (int basket_ix=0; basket_ix < M; ++basket_ix) {
 
         double k1θ1 = fθ1(t, θ1, θ2, ω1, ω2);
         double k1θ2 = fθ2(t, θ1, θ2, ω1, ω2);
@@ -89,14 +89,11 @@ __global__ void kernel::RK4(double4 *initArray, double4 *dataArray) {
         double k4ω1 = fω1(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
         double k4ω2 = fω2(t + h, θ1 + h*k3θ1, θ2 + h*k3θ2, ω1 + h*k3ω1, ω2 + h*k3ω2);
     
-        dataArray[ix*M + i].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
-        dataArray[ix*M + i].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
-        dataArray[ix*M + i].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
-        dataArray[ix*M + i].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
+        dataArray[basket_ix*N + ix].x =  θ1 = θ1 + h/6 * (k1θ1 + 2*k2θ1 + 2*k3θ1 + k4θ1);
+        dataArray[basket_ix*N + ix].y =  θ2 = θ2 + h/6 * (k1θ2 + 2*k2θ2 + 2*k3θ2 + k4θ2);
+        dataArray[basket_ix*N + ix].z =  ω1 = ω1 + h/6 * (k1ω1 + 2*k2ω1 + 2*k3ω1 + k4ω1);
+        dataArray[basket_ix*N + ix].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
     
     }
-
-    dataArray[0].x = dataArray[0].y = l1;
-    dataArray[0].z = dataArray[0].w = m1;
     
 }
