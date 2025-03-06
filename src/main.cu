@@ -76,14 +76,14 @@ int map_file_rd(const char* filename, struct mmap_t* map) {
         map->file, 0, PAGE_READWRITE, 0, map->sz, 0
     );
     if (!map->hMap) {
-        printf("Error creating file mapping: %d\n", GetLastError());
+        printf("Error creating read file mapping: %d\n", GetLastError());
         CloseHandle(map->file);
         return -2;
     }
 
     map->h_array = MapViewOfFile(map->hMap, FILE_MAP_WRITE, 0, 0, map->sz);
     if (!map->h_array) {
-        printf("Error mapping view of file: %d\n", GetLastError());
+        printf("Error mapping view of read file: %d\n", GetLastError());
         CloseHandle(map->hMap);
         CloseHandle(map->file);
         return -1;
@@ -101,22 +101,32 @@ int map_file_wr(const char* filename, struct mmap_t* map) {
         return -1;
     }
 
-    SetFilePointer(map->file, map->sz, 0, FILE_BEGIN);
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    const uint32_t PAGE_SIZE = info.dwAllocationGranularity;
+
+    const uint64_t padded_sz = (map->sz + PAGE_SIZE - 1)/PAGE_SIZE * PAGE_SIZE;
+    const uint32_t szL = (uint32_t)padded_sz;
+    const uint32_t szH = (uint32_t)(padded_sz >> 32);
+
+    printf("%llx %x %x", padded_sz, szL, szH);
+
+    SetFilePointer(map->file, szL, (long*)&szH, FILE_BEGIN);
     SetEndOfFile(map->file);
 
     // create mapping
     map->hMap = CreateFileMapping(
-        map->file, 0, PAGE_READWRITE, 0, map->sz, 0
+        map->file, 0, PAGE_READWRITE, szH, szL, 0
     );
     if (!map->hMap) {
-        printf("Error creating file mapping: %d\n", GetLastError());
+        printf("Error creating write file mapping: %d\n", GetLastError());
         CloseHandle(map->file);
         return -2;
     }
 
-    map->h_array = MapViewOfFile(map->hMap, FILE_MAP_WRITE, 0, 0, map->sz);
+    map->h_array = MapViewOfFile(map->hMap, FILE_MAP_WRITE, 0, szH, szL);
     if (!map->h_array) {
-        printf("Error mapping view of file: %d\n", GetLastError());
+        printf("Error mapping view of write file: %d\n", GetLastError());
         CloseHandle(map->hMap);
         CloseHandle(map->file);
         return -1;
