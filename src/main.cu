@@ -92,54 +92,66 @@ int map_file_rd(const char* filename, struct mmap_t* map) {
     return 0;
 }
 
-int map_file_wr(const char* filename, struct mmap_t* map) {
-    map->file = CreateFileA(
+int map_file_wr(
+    const char* filename, 
+    struct mmap_t* maps, 
+    const uint16_t n, 
+    const size_t seg_size
+) {
+    HANDLE file = CreateFileA(
         filename, GENERIC_READ | GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0
     );
-    if (map->file == INVALID_HANDLE_VALUE) {
+    if (file == INVALID_HANDLE_VALUE) {
         printf("Error opening write file: %d\n", GetLastError());
         return -1;
     }
 
-    SYSTEM_INFO info;
-    GetSystemInfo(&info);
-    const uint32_t PAGE_SIZE = info.dwAllocationGranularity;
+    const uint64_t sz  = n * seg_size;
+    const uint32_t szL = (uint32_t)sz;
+    const uint32_t szH = (uint32_t)(sz >> 32);
 
-    const uint64_t padded_sz = (map->sz + PAGE_SIZE - 1)/PAGE_SIZE * PAGE_SIZE;
-    const uint32_t szL = (uint32_t)padded_sz;
-    const uint32_t szH = (uint32_t)(padded_sz >> 32);
-
-    printf("%llx %x %x", padded_sz, szL, szH);
-
-    SetFilePointer(map->file, szL, (long*)&szH, FILE_BEGIN);
-    SetEndOfFile(map->file);
+    SetFilePointer(file, szL, (long*)&szH, FILE_BEGIN);
+    SetEndOfFile(file);
 
     // create mapping
-    map->hMap = CreateFileMapping(
-        map->file, 0, PAGE_READWRITE, szH, szL, 0
+    HANDLE hMap = CreateFileMapping(
+        file, 0, PAGE_READWRITE, szH, szL, 0
     );
-    if (!map->hMap) {
+    if (!hMap) {
         printf("Error creating write file mapping: %d\n", GetLastError());
-        CloseHandle(map->file);
+        CloseHandle(file);
         return -2;
     }
 
-    map->h_array = MapViewOfFile(map->hMap, FILE_MAP_WRITE, 0, szH, szL);
-    if (!map->h_array) {
-        printf("Error mapping view of write file: %d\n", GetLastError());
-        CloseHandle(map->hMap);
-        CloseHandle(map->file);
-        return -1;
+    uint64_t offset = 0;
+    for (int i=0; offset < sz; ++i) {
+        maps[i].file = file;
+        maps[i].hMap = hMap;
+        maps[i].sz = seg_size;
+        maps[i].h_array = MapViewOfFile(hMap, FILE_MAP_WRITE, (offset >> 32), (uint32_t)offset, seg_size);
+        
+        if (!maps[i].h_array) {
+            printf("Error mapping view of write file: %d\n", GetLastError());
+            for (; i>0; --i) {
+                UnmapViewOfFile(maps[i].h_array); 
+            }
+            CloseHandle(hMap);
+            CloseHandle(file);
+            return -1;
+        }
+        offset += seg_size; 
     }
 
     return 0;
 }
 
-void unmap_file(struct mmap_t* map) {
-    FlushViewOfFile(map->h_array, map->sz);
-    UnmapViewOfFile(map->h_array);
-    CloseHandle(map->hMap);
-    CloseHandle(map->file);
+void unmap_file(struct mmap_t* maps, int n) {
+    for (int i=0; i<n; i++) {
+        FlushViewOfFile(maps[i].h_array, maps[i].sz);
+        UnmapViewOfFile(maps[i].h_array);
+    }
+    CloseHandle(maps[0].hMap);
+    CloseHandle(maps[0].file);
 }
 
 int main(int argc, char* argv[]) {
@@ -150,41 +162,51 @@ int main(int argc, char* argv[]) {
     read_args(argc, argv, myArgs);
     kernel::set_constants(myArgs.consts);
 
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    const uint32_t PAGE_SIZE = info.dwAllocationGranularity;
+    const uint64_t SEG_SIZE  = PAGE_SIZE << 8;
+
     // open files
     double4 *d_initArray,
             *d_dataArray;
 
     size_t init_size = myArgs.consts.N * sizeof(double4);
     size_t data_size = myArgs.consts.N * myArgs.consts.M * sizeof(double4);
+    uint16_t data_count = (data_size + SEG_SIZE - 1) / SEG_SIZE; 
+    size_t data_size_padded = data_count * SEG_SIZE;
 
-    struct mmap_t initMap, dataMap;
+    struct mmap_t initMap, *dataMaps = new mmap_t[data_count];
     initMap.sz = init_size;
-    dataMap.sz = data_size;
 
     if (map_file_rd(myArgs.srcFilename, &initMap) < 0) {
         return -2;
     } 
-    if (map_file_wr(myArgs.dstFilename, &dataMap) < 0) {
-        unmap_file(&initMap);
+    if (map_file_wr(myArgs.dstFilename, dataMaps, data_count, data_size_padded) < 0) {
+        unmap_file(&initMap, 1);
         return -2;
     }
 
     // cuda op
     cudaMalloc(&d_initArray, init_size);
-    cudaMalloc(&d_dataArray, data_size);
+    cudaMalloc(&d_dataArray, data_size_padded);
 
     cudaMemcpy(d_initArray, initMap.h_array, init_size, cudaMemcpyHostToDevice);
 
     kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
 
-    cudaMemcpy(dataMap.h_array, d_dataArray, data_size, cudaMemcpyDeviceToHost);
-
-    // cleanup
+    for (int i=0; i<data_count; ++i) {
+        void* src = (void*)((uint64_t)d_dataArray + i*SEG_SIZE);
+        cudaMemcpy(dataMaps[i].h_array, src, SEG_SIZE, cudaMemcpyDeviceToHost);
+    }
+    // cleanup 3 460 562 944
     cudaFree(d_initArray);
     cudaFree(d_dataArray);
 
-    unmap_file(&initMap);
-    unmap_file(&dataMap);
+    unmap_file(&initMap, 1);
+    unmap_file(dataMaps, data_count);
+
+    delete[] dataMaps;
 
     return 0;
 }
