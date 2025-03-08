@@ -18,18 +18,18 @@ struct args_t {
 void read_args(int argc, char* argv[], args_t& myArgs) {
 
     // read args
-    if (argc < 5) {
-        printf("Too few args.\n Usage: main.exe <input_file> <output_file> [<options>]");
+    if (argc < 4) {
+        printf("Too few args.\n Usage: main.exe <input_file> <num_inst> <num_iter> [<options>]");
         exit(-1);
     }
 
     strcpy(myArgs.srcFilename, argv[1]);
-    strcpy(myArgs.dstFilename, argv[2]);
+    strcpy(myArgs.dstFilename, "./output.bin");
 
-    myArgs.consts.N = atol(argv[3]);
-    myArgs.consts.M = atol(argv[4]);
+    myArgs.consts.N = atol(argv[2]);
+    myArgs.consts.M = atol(argv[3]);
     
-    for (int i=5; i<argc; i += 2) {
+    for (int i=4; i<argc; i += 2) {
         if (argv[i][0] != '-') {
             printf("Bad cmd line args"); exit(-1);
         } 
@@ -45,6 +45,8 @@ void read_args(int argc, char* argv[], args_t& myArgs) {
             myArgs.consts.g = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-m2") == 0) {
             myArgs.consts.h = atof(argv[i+1]);
+        } else if (strcmp(argv[i], "-o" ) == 0) {
+            strcpy(myArgs.dstFilename, argv[i+1]);
         }
 
     }
@@ -155,10 +157,9 @@ void unmap_file(struct mmap_t* maps, int n) {
 }
 
 int main(int argc, char* argv[]) {
-    // usage: main.exe <input_file> <output_file> <num_instances> <num_iterations> [<options>]
+    // usage: main.exe <input_file> <num_instances> <num_iterations> [<options>]
 
     args_t myArgs;
-
     read_args(argc, argv, myArgs);
     kernel::set_constants(myArgs.consts);
 
@@ -173,29 +174,28 @@ int main(int argc, char* argv[]) {
 
     size_t init_size = myArgs.consts.N * sizeof(double4);
     size_t data_size = myArgs.consts.N * myArgs.consts.M * sizeof(double4);
-    uint16_t data_count = (data_size + SEG_SIZE - 1) / SEG_SIZE; 
-    size_t data_size_padded = data_count * SEG_SIZE;
+    uint16_t seg_count = (data_size + SEG_SIZE - 1) / SEG_SIZE;
 
-    struct mmap_t initMap, *dataMaps = new mmap_t[data_count];
+    struct mmap_t initMap, *dataMaps = new mmap_t[seg_count];
     initMap.sz = init_size;
 
     if (map_file_rd(myArgs.srcFilename, &initMap) < 0) {
         return -2;
     } 
-    if (map_file_wr(myArgs.dstFilename, dataMaps, data_count, data_size_padded) < 0) {
+    if (map_file_wr(myArgs.dstFilename, dataMaps, seg_count, SEG_SIZE) < 0) {
         unmap_file(&initMap, 1);
         return -2;
     }
 
     // cuda op
     cudaMalloc(&d_initArray, init_size);
-    cudaMalloc(&d_dataArray, data_size_padded);
+    cudaMalloc(&d_dataArray, seg_count * SEG_SIZE);
 
     cudaMemcpy(d_initArray, initMap.h_array, init_size, cudaMemcpyHostToDevice);
 
     kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
 
-    for (int i=0; i<data_count; ++i) {
+    for (int i=0; i<seg_count; ++i) {
         void* src = (void*)((uint64_t)d_dataArray + i*SEG_SIZE);
         cudaMemcpy(dataMaps[i].h_array, src, SEG_SIZE, cudaMemcpyDeviceToHost);
     }
@@ -204,7 +204,7 @@ int main(int argc, char* argv[]) {
     cudaFree(d_dataArray);
 
     unmap_file(&initMap, 1);
-    unmap_file(dataMaps, data_count);
+    unmap_file(dataMaps, seg_count);
 
     delete[] dataMaps;
 
