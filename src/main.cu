@@ -1,7 +1,18 @@
 #include <stdio.h>
+#include <iostream>
 #include <windows.h>
 #include "kernel.cuh"
 
+
+#define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
 
 struct args_t {
     kernel::constants_t consts = {
@@ -13,6 +24,13 @@ struct args_t {
     char srcFilename[100];
     char dstFilename[100];
 
+};
+
+struct basket_t {
+    struct fourlet {
+        double4 data[4];
+    };
+    struct fourlet arr[512];
 };
 
 void read_args(int argc, char* argv[], args_t& myArgs) {
@@ -161,12 +179,14 @@ int main(int argc, char* argv[]) {
 
     args_t myArgs;
     read_args(argc, argv, myArgs);
-    kernel::set_constants(myArgs.consts);
 
     SYSTEM_INFO info;
     GetSystemInfo(&info);
     const uint32_t PAGE_SIZE = info.dwAllocationGranularity;
     const uint64_t SEG_SIZE  = PAGE_SIZE << 8;
+
+    size_t free_size, _;
+    gpuErrChk( cudaMemGetInfo(&free_size, &_) );
 
     // open files
     double4 *d_initArray,
@@ -188,18 +208,54 @@ int main(int argc, char* argv[]) {
     }
 
     // cuda op
-    cudaMalloc(&d_initArray, init_size);
-    cudaMalloc(&d_dataArray, seg_count * SEG_SIZE);
 
-    cudaMemcpy(d_initArray, initMap.h_array, init_size, cudaMemcpyHostToDevice);
+    gpuErrChk( cudaMalloc(&d_initArray, init_size) );
 
-    kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
+    size_t turn_size = 1 << 30; // free_size & (-SEG_SIZE);
+    // while( cudaMalloc(&d_dataArray, turn_size) != cudaSuccess ) {
+    //     // allocate whole number of SEGs
+    //     turn_size = (turn_size >> 1) & (-SEG_SIZE);
+    //     if (turn_size < SEG_SIZE) {
+    //         printf("Not possible to allocate even one SEG\n");
+    //     }
+    // }
+    gpuErrChk( cudaMalloc(&d_dataArray, turn_size) );
+    const uint32_t sg_per_turn = turn_size / SEG_SIZE;
+    const uint32_t bs_per_sg = SEG_SIZE / sizeof(basket_t);
 
-    for (int i=0; i<seg_count; ++i) {
-        void* src = (void*)((uint64_t)d_dataArray + i*SEG_SIZE);
-        cudaMemcpy(dataMaps[i].h_array, src, SEG_SIZE, cudaMemcpyDeviceToHost);
+    myArgs.consts.M = sg_per_turn * bs_per_sg;
+    
+    //printf("sg_per_turn: %lu\n bs_per_sg: %lu\n M: %lu\n SEG_SIZE: 0x%llx\n", sg_per_turn, bs_per_sg, myArgs.consts.M, SEG_SIZE);
+    kernel::set_constants(myArgs.consts);
+    for (int j=0, i=0; i<seg_count; ++i) {
+        
+        if (i % sg_per_turn == 0) {
+            double4* tail_basket = (double4*)& ((basket_t*)dataMaps[i-1].h_array)[bs_per_sg-2];
+            double4* init_basket = (j == 0 ? (double4*)initMap.h_array : tail_basket);
+
+            gpuErrChk( cudaMemcpy(d_initArray, init_basket, init_size, cudaMemcpyHostToDevice) );
+
+            kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
+
+            cudaError_t err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cout << "Kernel launch failed: " << cudaGetErrorString(err) << std::endl;
+            }
+            cudaDeviceSynchronize();
+            ++j;
+        }
+
+        // void* src = d_dataArray;
+        void* src = (void*)((uint64_t)d_dataArray + (i%sg_per_turn)*SEG_SIZE);
+        void* dst = dataMaps[i].h_array;
+        
+        //printf("i: %d, src: 0x%llx, dst: 0x%llx\n", i, (uint64_t)src, (uint64_t)dst);
+        //std::memset(dst, 1, SEG_SIZE);
+        //gpuErrChk( cudaMemset(src, 1, SEG_SIZE) );
+        gpuErrChk( cudaMemcpy(dst, src, (size_t)SEG_SIZE, cudaMemcpyDeviceToHost));
     }
-    // cleanup 3 460 562 944
+
+    // cleanup
     cudaFree(d_initArray);
     cudaFree(d_dataArray);
 
