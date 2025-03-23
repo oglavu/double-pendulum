@@ -26,13 +26,6 @@ struct args_t {
 
 };
 
-struct basket_t {
-    struct fourlet {
-        double4 data[4];
-    };
-    struct fourlet arr[512];
-};
-
 void read_args(int argc, char* argv[], args_t& myArgs) {
 
     // read args
@@ -177,27 +170,31 @@ void unmap_file(struct mmap_t* maps, int n) {
 int main(int argc, char* argv[]) {
     // usage: main.exe <input_file> <num_instances> <num_iterations> [<options>]
 
-    args_t myArgs;
-    read_args(argc, argv, myArgs);
-
     SYSTEM_INFO info;
     GetSystemInfo(&info);
     const uint32_t PAGE_SIZE = info.dwAllocationGranularity;
     const uint64_t SEG_SIZE  = PAGE_SIZE << 8;
 
+    args_t myArgs;
+    read_args(argc, argv, myArgs);
+
     size_t free_size, _;
-    gpuErrChk( cudaMemGetInfo(&free_size, &_) );
+    gpuErrChk( cudaMemGetInfo(&_, &free_size) );
+    size_t turn_size = free_size & (-SEG_SIZE);
 
     // open files
-    double4 *d_initArray,
-            *d_dataArray;
+    const size_t basket_count = myArgs.consts.N;
+    const size_t basket_size  = myArgs.consts.N * sizeof(double4);
+    const size_t data_size    = myArgs.consts.M * basket_size;
+    const size_t seg_count    = (data_size + SEG_SIZE - 1) / SEG_SIZE;
+    const size_t seg_per_turn = turn_size / SEG_SIZE;
+    const size_t bs_per_seg    = SEG_SIZE / basket_size;
 
-    size_t init_size = myArgs.consts.N * sizeof(double4);
-    size_t data_size = myArgs.consts.N * myArgs.consts.M * sizeof(double4);
-    uint16_t seg_count = (data_size + SEG_SIZE - 1) / SEG_SIZE;
+    myArgs.consts.M = seg_per_turn * bs_per_seg;
+    kernel::set_constants(myArgs.consts);
 
     struct mmap_t initMap, *dataMaps = new mmap_t[seg_count];
-    initMap.sz = init_size;
+    initMap.sz = basket_size;
 
     if (map_file_rd(myArgs.srcFilename, &initMap) < 0) {
         return -2;
@@ -208,50 +205,28 @@ int main(int argc, char* argv[]) {
     }
 
     // cuda op
-
-    gpuErrChk( cudaMalloc(&d_initArray, init_size) );
-
-    size_t turn_size = 1 << 30; // free_size & (-SEG_SIZE);
-    // while( cudaMalloc(&d_dataArray, turn_size) != cudaSuccess ) {
-    //     // allocate whole number of SEGs
-    //     turn_size = (turn_size >> 1) & (-SEG_SIZE);
-    //     if (turn_size < SEG_SIZE) {
-    //         printf("Not possible to allocate even one SEG\n");
-    //     }
-    // }
+    double4 *d_initArray,
+            *d_dataArray;
+    gpuErrChk( cudaMalloc(&d_initArray, basket_size) );
     gpuErrChk( cudaMalloc(&d_dataArray, turn_size) );
-    const uint32_t sg_per_turn = turn_size / SEG_SIZE;
-    const uint32_t bs_per_sg = SEG_SIZE / sizeof(basket_t);
 
-    myArgs.consts.M = sg_per_turn * bs_per_sg;
-    
-    //printf("sg_per_turn: %lu\n bs_per_sg: %lu\n M: %lu\n SEG_SIZE: 0x%llx\n", sg_per_turn, bs_per_sg, myArgs.consts.M, SEG_SIZE);
-    kernel::set_constants(myArgs.consts);
-    for (int j=0, i=0; i<seg_count; ++i) {
+    for (int i=0; i<seg_count; ++i) {
         
-        if (i % sg_per_turn == 0) {
-            double4* tail_basket = (double4*)& ((basket_t*)dataMaps[i-1].h_array)[bs_per_sg-2];
-            double4* init_basket = (j == 0 ? (double4*)initMap.h_array : tail_basket);
+        if (i % seg_per_turn == 0) {
+            double4* tail_basket = &((double4*)dataMaps[i-1].h_array)[(bs_per_seg - 1) * basket_count];
+            double4* init_basket = (i == 0 ? (double4*)initMap.h_array : tail_basket);
 
-            gpuErrChk( cudaMemcpy(d_initArray, init_basket, init_size, cudaMemcpyHostToDevice) );
-
+            gpuErrChk( cudaMemcpy(d_initArray, init_basket, basket_size, cudaMemcpyHostToDevice) );
+            
             kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
+            gpuErrChk( cudaPeekAtLastError() );
 
-            cudaError_t err = cudaGetLastError();
-            if (err != cudaSuccess) {
-                std::cout << "Kernel launch failed: " << cudaGetErrorString(err) << std::endl;
-            }
             cudaDeviceSynchronize();
-            ++j;
         }
 
-        // void* src = d_dataArray;
-        void* src = (void*)((uint64_t)d_dataArray + (i%sg_per_turn)*SEG_SIZE);
+        void* src = (void*)((uint64_t)d_dataArray + (i%seg_per_turn)*SEG_SIZE);
         void* dst = dataMaps[i].h_array;
-        
-        //printf("i: %d, src: 0x%llx, dst: 0x%llx\n", i, (uint64_t)src, (uint64_t)dst);
-        //std::memset(dst, 1, SEG_SIZE);
-        //gpuErrChk( cudaMemset(src, 1, SEG_SIZE) );
+
         gpuErrChk( cudaMemcpy(dst, src, (size_t)SEG_SIZE, cudaMemcpyDeviceToHost));
     }
 
