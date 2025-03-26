@@ -4,6 +4,8 @@
 #include <windows.h>
 #include "kernel.cuh"
 
+#define TURN_SIZE (1UL<<31) // 2 GB
+#define SEG_SIZE  (1UL<<31) // 2 GB
 
 #define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -171,37 +173,29 @@ void unmap_file(struct mmap_t* maps, int n) {
 int main(int argc, char* argv[]) {
     // usage: main.exe <input_file> <num_instances> <num_iterations> [<options>]
 
-    SYSTEM_INFO info;
-    GetSystemInfo(&info);
-    const uint32_t PAGE_SIZE = info.dwAllocationGranularity;
-    const uint64_t SEG_SIZE  = PAGE_SIZE << 8;
-
     args_t myArgs;
     read_args(argc, argv, myArgs);
 
-    size_t free_size, _;
-    gpuErrChk( cudaMemGetInfo(&_, &free_size) );
-    size_t turn_size = free_size & (-SEG_SIZE);
-
-    // open files
+    // calc consts
     const size_t basket_count = myArgs.consts.N;
     const size_t basket_size  = myArgs.consts.N * sizeof(double4);
     const size_t data_size    = myArgs.consts.M * basket_size;
     const size_t seg_count    = (data_size + SEG_SIZE - 1) / SEG_SIZE;
-    const size_t seg_per_turn = turn_size / SEG_SIZE;
+    const size_t seg_per_turn = TURN_SIZE / SEG_SIZE;
     const size_t bs_per_seg   = SEG_SIZE / basket_size;
-    const size_t turn_count   = (data_size + turn_size - 1) / turn_size;
+    const size_t turn_count   = (data_size + TURN_SIZE - 1) / TURN_SIZE;
 
     myArgs.consts.M = seg_per_turn * bs_per_seg;
     kernel::set_constants(myArgs.consts);
 
+    // open files
     struct mmap_t initMap, *dataMaps = new mmap_t[turn_count];
     initMap.sz = basket_size;
 
     if (map_file_rd(myArgs.srcFilename, &initMap) < 0) {
         return -2;
     } 
-    if (map_file_wr(myArgs.dstFilename, dataMaps, turn_count, turn_size) < 0) {
+    if (map_file_wr(myArgs.dstFilename, dataMaps, turn_count, TURN_SIZE) < 0) {
         unmap_file(&initMap, 1);
         return -2;
     }
@@ -213,8 +207,8 @@ int main(int argc, char* argv[]) {
             *d_dataArray,
             *h_dataArray;
     gpuErrChk( cudaMalloc(&d_initArray, basket_size) );
-    gpuErrChk( cudaMalloc(&d_dataArray, turn_size) );
-    gpuErrChk( cudaMallocHost(&h_dataArray, turn_size) );
+    gpuErrChk( cudaMalloc(&d_dataArray, TURN_SIZE) );
+    gpuErrChk( cudaMallocHost(&h_dataArray, TURN_SIZE) );
 
     gpuErrChk( cudaMemcpy(d_initArray, initMap.h_array, basket_size, cudaMemcpyHostToDevice) );
 
@@ -226,9 +220,9 @@ int main(int argc, char* argv[]) {
         cudaDeviceSynchronize();
         if (i > 0) memcpy_ftr.wait();
 
-        gpuErrChk( cudaMemcpy(h_dataArray, d_dataArray, turn_size, cudaMemcpyDeviceToHost) );
+        gpuErrChk( cudaMemcpy(h_dataArray, d_dataArray, TURN_SIZE, cudaMemcpyDeviceToHost) );
         memcpy_ftr = std::async(std::launch::async, [=]() {
-            std::memcpy(dataMaps[i].h_array, h_dataArray, turn_size);
+            std::memcpy(dataMaps[i].h_array, h_dataArray, TURN_SIZE);
         });
     }
 
