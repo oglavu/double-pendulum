@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <iostream>
+#include <future>
 #include <windows.h>
 #include "kernel.cuh"
 
@@ -189,46 +190,54 @@ int main(int argc, char* argv[]) {
     const size_t seg_count    = (data_size + SEG_SIZE - 1) / SEG_SIZE;
     const size_t seg_per_turn = turn_size / SEG_SIZE;
     const size_t bs_per_seg   = SEG_SIZE / basket_size;
+    const size_t turn_count   = (data_size + turn_size - 1) / turn_size;
 
     myArgs.consts.M = seg_per_turn * bs_per_seg;
     kernel::set_constants(myArgs.consts);
 
-    struct mmap_t initMap, *dataMaps = new mmap_t[seg_count];
+    struct mmap_t initMap, *dataMaps = new mmap_t[turn_count];
     initMap.sz = basket_size;
 
     if (map_file_rd(myArgs.srcFilename, &initMap) < 0) {
         return -2;
     } 
-    if (map_file_wr(myArgs.dstFilename, dataMaps, seg_count, SEG_SIZE) < 0) {
+    if (map_file_wr(myArgs.dstFilename, dataMaps, turn_count, turn_size) < 0) {
         unmap_file(&initMap, 1);
         return -2;
     }
 
     // cuda op
+    std::future<void> memcpy_ftr;
+
     double4 *d_initArray,
-            *d_dataArray;
+            *d_dataArray,
+            *h_dataArray;
     gpuErrChk( cudaMalloc(&d_initArray, basket_size) );
     gpuErrChk( cudaMalloc(&d_dataArray, turn_size) );
+    gpuErrChk( cudaMallocHost(&h_dataArray, turn_size) );
 
-    for (int i=0; i<seg_count; ++i) {
+    gpuErrChk( cudaMemcpy(d_initArray, initMap.h_array, basket_size, cudaMemcpyHostToDevice) );
+
+    for (int i=0; i<turn_count; ++i) {
         
-        if (i % seg_per_turn == 0) {
-            
-            kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
-            gpuErrChk( cudaPeekAtLastError() );
+        kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
+        gpuErrChk( cudaPeekAtLastError() );
 
-            cudaDeviceSynchronize();
-        }
+        cudaDeviceSynchronize();
+        if (i > 0) memcpy_ftr.wait();
 
-        void* src = (void*)((uint64_t)d_dataArray + (i%seg_per_turn)*SEG_SIZE);
-        void* dst = dataMaps[i].h_array;
-
-        gpuErrChk( cudaMemcpy(dst, src, (size_t)SEG_SIZE, cudaMemcpyDeviceToHost));
+        gpuErrChk( cudaMemcpy(h_dataArray, d_dataArray, turn_size, cudaMemcpyDeviceToHost) );
+        memcpy_ftr = std::async(std::launch::async, [=]() {
+            std::memcpy(dataMaps[i].h_array, h_dataArray, turn_size);
+        });
     }
+
+    memcpy_ftr.wait();
 
     // cleanup
     cudaFree(d_initArray);
     cudaFree(d_dataArray);
+    cudaFreeHost(h_dataArray);
 
     unmap_file(&initMap, 1);
     unmap_file(dataMaps, seg_count);
