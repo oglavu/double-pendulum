@@ -188,14 +188,13 @@ int main(int argc, char* argv[]) {
     myArgs.consts.M = seg_per_turn * bs_per_seg;
     kernel::set_constants(myArgs.consts);
 
-    // open files
-    struct mmap_t initMap, *dataMaps = new mmap_t[turn_count];
+    struct mmap_t initMap, *dataMaps = new mmap_t[seg_count];
     initMap.sz = basket_size;
 
     if (map_file_rd(myArgs.srcFilename, &initMap) < 0) {
         return -2;
     } 
-    if (map_file_wr(myArgs.dstFilename, dataMaps, turn_count, TURN_SIZE) < 0) {
+    if (map_file_wr(myArgs.dstFilename, dataMaps, seg_count, SEG_SIZE) < 0) {
         unmap_file(&initMap, 1);
         return -2;
     }
@@ -208,7 +207,7 @@ int main(int argc, char* argv[]) {
             *h_dataArray;
     gpuErrChk( cudaMalloc(&d_initArray, basket_size) );
     gpuErrChk( cudaMalloc(&d_dataArray, TURN_SIZE) );
-    gpuErrChk( cudaMallocHost(&h_dataArray, TURN_SIZE) );
+    gpuErrChk( cudaMallocHost(&h_dataArray, SEG_SIZE) );
 
     gpuErrChk( cudaMemcpy(d_initArray, initMap.h_array, basket_size, cudaMemcpyHostToDevice) );
 
@@ -218,12 +217,14 @@ int main(int argc, char* argv[]) {
         gpuErrChk( cudaPeekAtLastError() );
 
         cudaDeviceSynchronize();
+#if(SEG_SIZE==TURN_SIZE)
         if (i > 0) memcpy_ftr.wait();
 
         gpuErrChk( cudaMemcpy(h_dataArray, d_dataArray, TURN_SIZE, cudaMemcpyDeviceToHost) );
         memcpy_ftr = std::async(std::launch::async, [=]() {
             std::memcpy(dataMaps[i].h_array, h_dataArray, TURN_SIZE);
         });
+#endif
     }
 
     memcpy_ftr.wait();
