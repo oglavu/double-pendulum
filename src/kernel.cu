@@ -97,8 +97,8 @@ __global__ void kernel::RK4(double4 *initArray, double4 *dataArray) {
     }
 
     initArray[ix].x = θ1;
-    initArray[ix].x = θ2;
-    initArray[ix].x = ω1;
-    initArray[ix].x = ω2;
+    initArray[ix].y = θ2;
+    initArray[ix].z = ω1;
+    initArray[ix].w = ω2;
     
 }
