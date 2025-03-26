@@ -188,7 +188,7 @@ int main(int argc, char* argv[]) {
     const size_t data_size    = myArgs.consts.M * basket_size;
     const size_t seg_count    = (data_size + SEG_SIZE - 1) / SEG_SIZE;
     const size_t seg_per_turn = turn_size / SEG_SIZE;
-    const size_t bs_per_seg    = SEG_SIZE / basket_size;
+    const size_t bs_per_seg   = SEG_SIZE / basket_size;
 
     myArgs.consts.M = seg_per_turn * bs_per_seg;
     kernel::set_constants(myArgs.consts);
@@ -213,10 +213,6 @@ int main(int argc, char* argv[]) {
     for (int i=0; i<seg_count; ++i) {
         
         if (i % seg_per_turn == 0) {
-            double4* tail_basket = &((double4*)dataMaps[i-1].h_array)[(bs_per_seg - 1) * basket_count];
-            double4* init_basket = (i == 0 ? (double4*)initMap.h_array : tail_basket);
-
-            gpuErrChk( cudaMemcpy(d_initArray, init_basket, basket_size, cudaMemcpyHostToDevice) );
             
             kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
             gpuErrChk( cudaPeekAtLastError() );

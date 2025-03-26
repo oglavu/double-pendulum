@@ -95,5 +95,10 @@ __global__ void kernel::RK4(double4 *initArray, double4 *dataArray) {
         dataArray[basket_ix*N + ix].w =  ω2 = ω2 + h/6 * (k1ω2 + 2*k2ω2 + 2*k3ω2 + k4ω2);
     
     }
+
+    initArray[ix].x = θ1;
+    initArray[ix].x = θ2;
+    initArray[ix].x = ω1;
+    initArray[ix].x = ω2;
     
 }
