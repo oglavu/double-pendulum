@@ -140,7 +140,7 @@ int map_file_wr(
     }
 
     uint64_t offset = 0;
-    for (int i=0; offset < sz; ++i) {
+    for (uint64_t i=0; offset < sz; ++i) {
         maps[i].file = file;
         maps[i].hMap = hMap;
         maps[i].sz = seg_size;
@@ -161,8 +161,8 @@ int map_file_wr(
     return 0;
 }
 
-void unmap_file(struct mmap_t* maps, int n) {
-    for (int i=0; i<n; i++) {
+void unmap_file(struct mmap_t* maps, uint64_t n) {
+    for (uint64_t i=0; i<n; i++) {
         FlushViewOfFile(maps[i].h_array, maps[i].sz);
         UnmapViewOfFile(maps[i].h_array);
     }
@@ -203,20 +203,26 @@ int main(int argc, char* argv[]) {
     std::future<void> memcpy_ftr;
 
     double4 *d_initArray,
-            *d_dataArray,
-            *h_dataArray;
+            *d_dataArray;
     gpuErrChk( cudaMalloc(&d_initArray, basket_size) );
     gpuErrChk( cudaMalloc(&d_dataArray, TURN_SIZE) );
+#if(SEG_SIZE==TURN_SIZE)
+    double4* h_dataArray;
     gpuErrChk( cudaMallocHost(&h_dataArray, SEG_SIZE) );
-
+#else
+    cudaStream_t D2H_streams[seg_per_turn];
+    for (uint64_t i=0; i<seg_per_turn; ++i)
+        cudaStreamCreate(&D2H_streams[i]);
+#endif
     gpuErrChk( cudaMemcpy(d_initArray, initMap.h_array, basket_size, cudaMemcpyHostToDevice) );
 
-    for (int i=0; i<turn_count; ++i) {
+    for (uint64_t i=0; i<turn_count; ++i) {
         
         kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
         gpuErrChk( cudaPeekAtLastError() );
 
         cudaDeviceSynchronize();
+
 #if(SEG_SIZE==TURN_SIZE)
         if (i > 0) memcpy_ftr.wait();
 
@@ -224,15 +230,29 @@ int main(int argc, char* argv[]) {
         memcpy_ftr = std::async(std::launch::async, [=]() {
             std::memcpy(dataMaps[i].h_array, h_dataArray, TURN_SIZE);
         });
+#else
+        for (uint64_t j=0; j<seg_per_turn; ++j) {
+            void* dst = dataMaps[i*seg_per_turn + j].h_array;
+            void* src = (void*)((size_t)d_dataArray + j*seg_per_turn);
+            gpuErrChk( cudaMemcpyAsync(dst, src, SEG_SIZE, cudaMemcpyDeviceToHost, D2H_streams[j]) );
+        }
+        cudaDeviceSynchronize();
 #endif
     }
 
+#if(SEG_SIZE==TURN_SIZE)
     memcpy_ftr.wait();
+#endif
 
     // cleanup
     cudaFree(d_initArray);
     cudaFree(d_dataArray);
+#if(SEG_SIZE==TURN_SIZE)
     cudaFreeHost(h_dataArray);
+#else
+    for (uint64_t i=0; i<seg_per_turn; ++i)
+        cudaStreamDestroy(D2H_streams[i]);
+#endif
 
     unmap_file(&initMap, 1);
     unmap_file(dataMaps, seg_count);
