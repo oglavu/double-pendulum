@@ -6,4 +6,7 @@
 *.bin
 /build
 /bin
+/lib
+/inc
+/tmp
 /.vscode
