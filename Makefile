@@ -56,6 +56,7 @@ $(BUILD_DIR)/pp_%.obj: $(BUILD_DIR)/pp_%.cu
 # Link into final executable
 $(EXECUTABLE): $(BIN_DIR) $(BUILD_DIR) $(PREH) $(OBJS)
 	$(NVCC) $(NVCCFLAGS) $(OBJS) -o $@
+	rm -rf $(BIN_DIR)/*.exp $(BIN_DIR)/*.lib
 
 
 # Random generator output binary 

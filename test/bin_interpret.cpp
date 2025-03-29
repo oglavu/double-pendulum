@@ -1,34 +1,60 @@
 #include <iostream>
+#include <string>
 #include <fstream>
+
+struct double4 {
+    double x, y, z, w;
+};
 
 int main(int argc, char *argv[]) {
     // Ensure the user provided the number of random numbers as an argument
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <input_file> <num_numbers>\n";
+        std::cerr << "Usage: " << argv[0] << " <input_file> <num_numbers> [<options>]\n";
         return 1;
     }
 
-    // Convert input argument to an integer
-    size_t n = std::atoi(argv[2]);
+    // Selection option
+    // -s <step> <selected>
+    // step:     splits the array in slices of _step_ count (!= 0)
+    // selected: selects the index in the slice (zero-indexed)
+    uint32_t selected  = 0, step = 1;
+    if (argc == 6 && !std::string("-s").compare(argv[3])) {
+        step     = std::atoi(argv[4]);
+        selected = std::atoi(argv[5]);
+    }
 
-    // Open the file in binary mode
+    // Number of double4s to be printed
+    uint32_t n = std::atoi(argv[2]);
+
+    if (step == 0) {
+        std::cerr << "Error: Invalid step. Must be greater than 0.\n";
+        return 2;
+    }
+
+    // Read the file in binary mode
     std::ifstream file(argv[1], std::ios::binary);
     if (!file) {
         std::cerr << "Error: Could not open file for writing.\n";
-        return 1;
+        return 3;
     }
 
-    double* array = new double[n];
-    file.read((char*)array, n * sizeof(double));
+    double4* array = new double4[n];
+    file.read((char*)array, n * sizeof(double4));
 
-    // Generate and write numbers
-    for (size_t i = 0; i < n; i++) {
-        printf("%f%c", array[i], ((i+1)%4 ? ' ' : '\n'));
+    if (n*sizeof(double4) > file.gcount()) {
+        std::cerr << "Error: Exceeded file size.\n";
+        return 4;
     }
 
-    // Close the file
+    // Print numbers
+    for (uint32_t i = selected; i < n; i += step) {
+        printf("%llf %llf %llf %llf\n", 
+            array[i].x, array[i].y, array[i].z, array[i].w);
+    }
+
+    // Clean
     file.close();
     delete[] array;
-    std::cout << "\nRead " << n << " doubles from '" << argv[1] <<"'.\n";
+    std::cout << "\nRead " << n << " double4s from '" << argv[1] <<"'.\n";
     return 0;
 }
