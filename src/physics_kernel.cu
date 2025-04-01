@@ -1,9 +1,9 @@
 
-#include "kernel.cuh"
+#include "physics_kernel.cuh"
 
-using namespace kernel;
+using namespace physics_kernel;
 
-void kernel::set_constants(const struct kernel::constants_t& c) {
+void physics_kernel::set_constants(const struct physics_kernel::constants_t& c) {
     cudaMemcpyToSymbol(l1, &c.l1, sizeof(double));
     cudaMemcpyToSymbol(l2, &c.l2, sizeof(double));
     cudaMemcpyToSymbol(m1, &c.m1, sizeof(double));
@@ -15,15 +15,15 @@ void kernel::set_constants(const struct kernel::constants_t& c) {
 }
 
 
-__device__ double kernel::fθ1(double t, double θ1, double θ2, double ω1, double ω2) {
+__device__ double physics_kernel::fθ1(double t, double θ1, double θ2, double ω1, double ω2) {
     return ω1;
 }
 
-__device__ double kernel::fθ2(double t, double θ1, double θ2, double ω1, double ω2) {
+__device__ double physics_kernel::fθ2(double t, double θ1, double θ2, double ω1, double ω2) {
     return ω2;
 }
 
-__device__ double kernel::fω1(double t, double θ1, double θ2, double ω1, double ω2) {
+__device__ double physics_kernel::fω1(double t, double θ1, double θ2, double ω1, double ω2) {
     double Δθ = θ1 - θ2;
 
     double dividend = (
@@ -39,7 +39,7 @@ __device__ double kernel::fω1(double t, double θ1, double θ2, double ω1, dou
     return dividend / divisor;
 }
 
-__device__ double kernel::fω2(double t, double θ1, double θ2, double ω1, double ω2) {
+__device__ double physics_kernel::fω2(double t, double θ1, double θ2, double ω1, double ω2) {
     double Δθ = θ1 - θ2;
 
     double dividend = (
@@ -57,7 +57,7 @@ __device__ double kernel::fω2(double t, double θ1, double θ2, double ω1, dou
     return dividend / divisor;
 }
 
-__global__ void kernel::RK4(double4 *initArray, double4 *dataArray) {
+__global__ void physics_kernel::RK4(double4 *initArray, double4 *dataArray) {
     // Get thread index in 2D
     double   t     = 0;
     int      ix    = threadIdx.x;

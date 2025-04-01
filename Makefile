@@ -1,4 +1,8 @@
 
+SHELL := /bin/bash
+
+.SECONDARY: 
+
 SRC_DIR := ./src
 BUILD_DIR := ./build
 BIN_DIR := ./bin
@@ -7,55 +11,96 @@ LIB_DIR := ./lib
 INC_DIR := ./inc
 TMP_DIR := ./tmp
 
+SSTORAGE_DIR := $(SRC_DIR)/storage
+BSTORAGE_DIR := $(BUILD_DIR)/storage
+SVISUAL_DIR  := $(SRC_DIR)/visual
+BVISUAL_DIR  := $(BUILD_DIR)/visual
+
+LIBS := cudart
+LIBS_FLAGS := $(addprefix -l,$(LIBS))
+
+CC   := gcc
 CXX  := g++
 NVCC := nvcc
 CURL := curl
 7Z   := 7z
 
-NVCCFLAGS := -Wno-deprecated-gpu-targets
+LDFLAGS   := -Xcompiler="/MD" $(LIBS_FLAGS)
+NVCCFLAGS := --x cu -Wno-deprecated-gpu-targets
+CXXFLAGS  := -x c++ -Xcompiler="/MD"
 
-PREPROCESSOR := python $(SRC_DIR)/replace_greek.py
+PREPROCESSOR := python ./replace_greek.py
 
 # Find all .cu and .cuh files
-PREH := $(patsubst $(SRC_DIR)/%.cuh, $(BUILD_DIR)/%.cuh,    $(wildcard $(SRC_DIR)/*.cuh))
-OBJS  = $(patsubst $(SRC_DIR)/%.cu,  $(BUILD_DIR)/pp_%.obj, $(wildcard $(SRC_DIR)/*.cu)) 
+SHARED_SRCS := $(wildcard $(SRC_DIR)/*.cu) $(wildcard $(SRC_DIR)/*.cpp) $(wildcard $(SRC_DIR)/*.c)
+SHARED_HEDS := $(wildcard $(SRC_DIR)/*.cuh) $(wildcard $(SRC_DIR)/*.hpp) $(wildcard $(SRC_DIR)/*.h)
+
+STORAGE_SRCS = $(wildcard $(SSTORAGE_DIR)/*.cu) $(wildcard $(SSTORAGE_DIR)/*.cpp) $(wildcard $(SSTORAGE_DIR)/*.c)
+STORAGE_HEDS = $(wildcard $(SSTORAGE_DIR)/*.cuh) $(wildcard $(SSTORAGE_DIR)/*.hpp) $(wildcard $(SSTORAGE_DIR)/*.h)
+STORAGE_OBJS = $(STORAGE_SRCS:$(SSTORAGE_DIR)/%=$(BSTORAGE_DIR)/%.o) $(SHARED_SRCS:$(SRC_DIR)/%=$(BUILD_DIR)/%.o)
+STORAGE_PP_H = $(STORAGE_HEDS:$(SSTORAGE_DIR)/%=$(BSTORAGE_DIR)/%) $(SHARED_HEDS:$(SRC_DIR)/%=$(BUILD_DIR)/%)
 
 # Output binary
-EXECUTABLE := $(BIN_DIR)/main.exe
+STORAGE_EXE := $(BIN_DIR)/storage.exe
+VISUAL_EXE  := $(BIN_DIR)/visual.exe
 
 # Default target
-all: $(EXECUTABLE)
+all: $(STORAGE_EXE) #$(VISUAL_EXE)
+#python ./replace_greek.py src/storage/mmf.hpp build/storage/mmf.hpp.pp
+
 
 # Create dirs
 $(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $@
 
 $(BIN_DIR):
-	mkdir -p $(BIN_DIR)
+	mkdir -p $@
 
 $(LIB_DIR):
-	mkdir -p $(LIB_DIR)
+	mkdir -p $@
 
 $(INC_DIR):
-	mkdir -p $(INC_DIR)
+	mkdir -p $@
 
 $(TMP_DIR):
-	mkdir -p $(TMP_DIR)
+	mkdir -p $@
 
-# Preprocess src/*.cu and src/*.cuh files
-$(BUILD_DIR)/pp_%.cu: $(SRC_DIR)/%.cu	
+$(SSTORAGE_DIR):
+	mkdir -p $@
+
+$(BSTORAGE_DIR):
+	mkdir -p $@
+
+# Preprocess src/* and src/storage/* files
+$(BUILD_DIR)/%.pp: $(SRC_DIR)/%
+	$(PREPROCESSOR) $< $@
+$(BSTORAGE_DIR)/%.pp: $(SSTORAGE_DIR)/%
 	$(PREPROCESSOR) $< $@
 
-$(BUILD_DIR)/%.cuh: $(SRC_DIR)/%.cuh	
-	$(PREPROCESSOR) $< $@
+# Prepare header .cuh, .hpp and .h from /build and /build/storage
+$(BUILD_DIR)/%: $(BUILD_DIR)/%.pp
+	rename ".pp" "" $< || true
+$(BSTORAGE_DIR)/%: $(BSTORAGE_DIR)/%.pp
+	rename ".pp" "" $< || true
 
-# Compile preprocessed build/*.cu files
-$(BUILD_DIR)/pp_%.obj: $(BUILD_DIR)/pp_%.cu
+# Compile preprocessed .c, .cpp and .cu files from /build and /build/storage
+$(BUILD_DIR)/%.cu.o: $(BUILD_DIR)/%.cu.pp
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+$(BUILD_DIR)/%.cpp.o: $(BUILD_DIR)/%.cpp.pp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+$(BUILD_DIR)/%.c.o: $(BUILD_DIR)/%.c.pp
+	$(CC) $(GCCFLAGS) -c $< -o $@
+
+$(BSTORAGE_DIR)/%.cu.o: $(BSTORAGE_DIR)/%.cu.pp
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
+$(BSTORAGE_DIR)/%.cpp.o: $(BSTORAGE_DIR)/%.cpp.pp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+$(BSTORAGE_DIR)/%.c.o: $(BSTORAGE_DIR)/%.c.pp
+	$(CC) $(GCCFLAGS) -c $< -o $@
 
 # Link into final executable
-$(EXECUTABLE): $(BIN_DIR) $(BUILD_DIR) $(PREH) $(OBJS)
-	$(NVCC) $(NVCCFLAGS) $(OBJS) -o $@
+$(STORAGE_EXE): $(BIN_DIR) $(BUILD_DIR) $(BSTORAGE_DIR) $(STORAGE_PP_H) $(STORAGE_OBJS) 
+	$(NVCC) $(STORAGE_OBJS) -o $@ $(LDFLAGS)
 	rm -rf $(BIN_DIR)/*.exp $(BIN_DIR)/*.lib
 
 
@@ -113,3 +158,12 @@ clean-all:
 .PHONY: clean-setup
 clean-setup:
 	rm -rf $(TMP_DIR) $(INC_DIR) $(LIB_DIR)
+
+.PHONY: print-vars
+print-vars:
+	@echo Shared srcs: $(SHARED_SRCS)
+	@echo Shared heds: $(SHARED_HEDS)
+	@echo Storage srcs: $(STORAGE_SRCS)
+	@echo Storage heds: $(STORAGE_HEDS)
+	@echo Storage objs: $(STORAGE_OBJS)
+	@echo Storage pp h: $(STORAGE_PP_H)

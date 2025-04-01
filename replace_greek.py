@@ -2,8 +2,7 @@ import argparse
 import re
 
 def main():
-    parser = argparse.ArgumentParser(
-                    prog='ProgramName',
+    parser = argparse.ArgumentParser(prog='ProgramName',
                     description='What the program does',
                     epilog='Text at the bottom of help')
     
@@ -34,7 +33,7 @@ def main():
     with open(args.dst, "w", encoding='ascii') as file:
         file.write(scripted)
 
-    print("Scripting finished")
+    print(f"File '{args.src}' transliterated to file '{args.dst}'")
 
 if __name__ == "__main__":
     main()
