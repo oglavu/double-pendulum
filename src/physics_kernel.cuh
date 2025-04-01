@@ -2,6 +2,10 @@
 #ifndef PHYSICS_KERNEL_H
 #define PHYSICS_KERNEL_H
 
+#if __linux__
+#include <stdint.h>
+#endif
+
 __constant__ uint32_t N;
 __constant__ uint32_t M;
 

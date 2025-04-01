@@ -2,6 +2,10 @@
 #include <string>
 #include <fstream>
 
+#if __linux__
+#include <cstdint>
+#endif
+
 struct double4 {
     double x, y, z, w;
 };
@@ -18,7 +22,8 @@ int main(int argc, char *argv[]) {
     // step:     splits the array in slices of _step_ count (!= 0)
     // selected: selects the index in the slice (zero-indexed)
     uint32_t selected  = 0, step = 1;
-    if (argc == 6 && !std::string("-s").compare(argv[3])) {
+    bool selection_option = (argc == 6 && !std::string("-s").compare(argv[3]));
+    if (selection_option) {
         step     = std::atoi(argv[4]);
         selected = std::atoi(argv[5]);
     }
@@ -48,13 +53,14 @@ int main(int argc, char *argv[]) {
 
     // Print numbers
     for (uint32_t i = selected; i < n; i += step) {
-        printf("%llf %llf %llf %llf\n", 
-            array[i].x, array[i].y, array[i].z, array[i].w);
+        std::cout << array[i].x <<" "<< array[i].y <<" "<< array[i].z <<" "<< array[i].w <<std::endl;
     }
 
     // Clean
     file.close();
     delete[] array;
     std::cout << "\nRead " << n << " double4s from '" << argv[1] <<"'.\n";
+    if (selection_option)
+        std::cout << "Selected row is " << selected << " and every " << step << " is printed out.\n";
     return 0;
 }

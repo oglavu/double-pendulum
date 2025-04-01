@@ -2,14 +2,23 @@
 #ifndef MMF_H
 #define MMF_H
 
+#if _WIN32
 #include <windows.h>
-#include <iostream>
+#elif __linux__
+#include <cstddef>
+#include <cstdint>
+#endif
+
 
 namespace mmf {
 
     struct mmap_t {
+#if _WIN32
         HANDLE file;
         HANDLE hMap;
+#elif __linux__
+        int file;
+#endif
         size_t sz;
         void*  h_array;
     };

@@ -1,8 +1,4 @@
 
-SHELL := /bin/bash
-
-.SECONDARY: 
-
 SRC_DIR := ./src
 BUILD_DIR := ./build
 BIN_DIR := ./bin
@@ -25,11 +21,11 @@ NVCC := nvcc
 CURL := curl
 7Z   := 7z
 
-LDFLAGS   := -Xcompiler="/MD" $(LIBS_FLAGS)
+LDFLAGS   := $(LIBS_FLAGS)
 NVCCFLAGS := --x cu -Wno-deprecated-gpu-targets
-CXXFLAGS  := -x c++ -Xcompiler="/MD"
+CXXFLAGS  := -x c++
 
-PREPROCESSOR := python ./replace_greek.py
+PREPROCESSOR := python3 ./replace_greek.py
 
 # Find all .cu and .cuh files
 SHARED_SRCS := $(wildcard $(SRC_DIR)/*.cu) $(wildcard $(SRC_DIR)/*.cpp) $(wildcard $(SRC_DIR)/*.c)
@@ -46,7 +42,7 @@ VISUAL_EXE  := $(BIN_DIR)/visual.exe
 
 # Default target
 all: $(STORAGE_EXE) #$(VISUAL_EXE)
-#python ./replace_greek.py src/storage/mmf.hpp build/storage/mmf.hpp.pp
+#python3 ./replace_greek.py src/storage/mmf.hpp build/storage/mmf.hpp.pp
 
 
 # Create dirs
@@ -79,9 +75,9 @@ $(BSTORAGE_DIR)/%.pp: $(SSTORAGE_DIR)/%
 
 # Prepare header .cuh, .hpp and .h from /build and /build/storage
 $(BUILD_DIR)/%: $(BUILD_DIR)/%.pp
-	rename ".pp" "" $< || true
+	rename "s/\.pp$$//" $<
 $(BSTORAGE_DIR)/%: $(BSTORAGE_DIR)/%.pp
-	rename ".pp" "" $< || true
+	rename "s/\.pp$$//" $<
 
 # Compile preprocessed .c, .cpp and .cu files from /build and /build/storage
 $(BUILD_DIR)/%.cu.o: $(BUILD_DIR)/%.cu.pp
@@ -106,25 +102,25 @@ $(STORAGE_EXE): $(BIN_DIR) $(BUILD_DIR) $(BSTORAGE_DIR) $(STORAGE_PP_H) $(STORAG
 
 # Random generator output binary 
 RG_EXE := $(BIN_DIR)/rand_generator.exe
-RG_PP  := $(BUILD_DIR)/pp_rand_generator.cpp
+RG_PP  := $(BUILD_DIR)/rand_generator.cpp.pp
 
 gen: $(RG_EXE)
 
-$(BUILD_DIR)/pp_%.cpp: */%.cpp
+$(BUILD_DIR)/%.cpp.pp: $(TST_DIR)/%.cpp
 	$(PREPROCESSOR) $< $@
 
 $(RG_EXE): $(BUILD_DIR) $(BIN_DIR) $(RG_PP)
-	$(CXX) $(word 3, $^) -o $@
+	$(CXX) $(CXXFLAGS) $(RG_PP) -o $@
 
 
 # Interpreter output binary
 INT_EXE := $(BIN_DIR)/bin_interpret.exe
-INT_PP  := $(BUILD_DIR)/pp_bin_interpret.cpp
+INT_PP  := $(BUILD_DIR)/bin_interpret.cpp.pp
 
 int: $(INT_EXE)
 
 $(INT_EXE): $(BUILD_DIR) $(BIN_DIR) $(INT_PP)
-	$(CXX) $(word 3, $^) -o $@
+	$(CXX) $(CXXFLAGS) $(INT_PP) -o $@
 
 # Get GLEW and GLFW
 GLEW_URL := https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0-win32.zip

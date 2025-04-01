@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
 
         gpuErrChk( cudaMemcpy(h_dataArray, d_dataArray, TURN_SIZE, cudaMemcpyDeviceToHost) );
         memcpy_ftr = std::async(std::launch::async, [=]() {
-            std::memcpy(dataMaps[i].h_array, h_dataArray, TURN_SIZE);
+            memcpy(dataMaps[i].h_array, h_dataArray, TURN_SIZE);
         });
 #else
         for (uint64_t j=0; j<seg_per_turn; ++j) {
