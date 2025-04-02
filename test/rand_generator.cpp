@@ -4,14 +4,22 @@
 
 #define π (3.14f)
 
+#if (REAL_TYPE == 1)
+    typedef double real_t;
+#elif (REAL_TYPE == 0)
+    typedef float real_t;
+#else
+    #error "Unsupported real number type. Try 0 (flaot) or 1 (double)."
+#endif
+
 #define GEN_GENERATORS(rd, range, gen, dist) \
     std::mt19937 gen(rd()); \
-    std::uniform_real_distribution<double> dist(range.first, range.second);
+    std::uniform_real_distribution<real_t> dist(range.first, range.second);
 
 typedef std::pair<float, float> pairf_t;
 
-struct double4 {
-    double x, y, z, w;
+struct real4_t {
+    real_t x, y, z, w;
 };
 
 struct args_t {
@@ -90,7 +98,7 @@ int main(int argc, char *argv[]) {
     GEN_GENERATORS(rd[2], myArgs.ω1_range, ω1_gen, ω1_dist);
     GEN_GENERATORS(rd[3], myArgs.ω2_range, ω2_gen, ω2_dist);
 
-    double4* array = new double4[n];
+    real4_t* array = new real4_t[n];
 
     for (uint32_t i = 0; i < n; i++) { //dist(gen)
         array[i].x = θ1_dist(θ1_gen);
@@ -99,11 +107,12 @@ int main(int argc, char *argv[]) {
         array[i].w = ω2_dist(ω2_gen);
     }
 
-    file.write((char*)array, n * sizeof(double4));
+    file.write((char*)array, n * sizeof(real4_t));
 
     // Close the file
     file.close();
     delete[] array;
-    std::cout << "Generated " << n << " random numbers in '" << argv[1] <<"'.\n";
+    std::string type_name = (REAL_TYPE ? "double" : "float");
+    std::cout << "Generated " << n << " random " << type_name << "4s in '" << argv[1] <<"'.\n";
     return 0;
 }

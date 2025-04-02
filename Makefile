@@ -21,9 +21,12 @@ NVCC := nvcc
 CURL := curl
 7Z   := 7z
 
+
+REAL_TYPE ?= 0 # 0-float, 1-double
+
 LDFLAGS   := $(LIBS_FLAGS)
-NVCCFLAGS := --x cu -Wno-deprecated-gpu-targets
-CXXFLAGS  := -x c++
+NVCCFLAGS := --x cu -Wno-deprecated-gpu-targets -DREAL_TYPE=$(REAL_TYPE)
+CXXFLAGS  := -x c++ -DREAL_TYPE=$(REAL_TYPE)
 
 PYTHON := $(shell python3 --version >/dev/null 2>&1 && echo python3 || echo python)
 PREPROCESSOR := $(PYTHON) ./replace_greek.py
@@ -35,7 +38,7 @@ SHARED_OBJS := $(SHARED_SRCS:$(SRC_DIR)/%=$(BUILD_DIR)/%.o)
 SHARED_PP_H := $(SHARED_HEDS:$(SRC_DIR)/%=$(BUILD_DIR)/%)
 
 # Default target
-all: visual
+all: storage gen int visual
 
 # Create dirs
 $(BUILD_DIR):

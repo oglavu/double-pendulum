@@ -3,11 +3,20 @@
 #include <fstream>
 
 #if __linux__
-#include <cstdint>
+    #include <cstdint>
 #endif
 
-struct double4 {
-    double x, y, z, w;
+#if (REAL_TYPE == 1)
+    typedef double real_t;
+#elif (REAL_TYPE == 0)
+    typedef float real_t;
+#else
+    #error "Unsupported real number type. Try 0 (flaot) or 1 (double)."
+#endif
+
+
+struct real4_t {
+    real_t x, y, z, w;
 };
 
 int main(int argc, char *argv[]) {
@@ -28,7 +37,7 @@ int main(int argc, char *argv[]) {
         selected = std::atoi(argv[5]);
     }
 
-    // Number of double4s to be printed
+    // Number of real4_ts to be printed
     uint32_t n = std::atoi(argv[2]);
 
     if (step == 0) {
@@ -43,10 +52,10 @@ int main(int argc, char *argv[]) {
         return 3;
     }
 
-    double4* array = new double4[n];
-    file.read((char*)array, n * sizeof(double4));
+    real4_t* array = new real4_t[n];
+    file.read((char*)array, n * sizeof(real4_t));
 
-    if (n*sizeof(double4) > file.gcount()) {
+    if (n*sizeof(real4_t) > file.gcount()) {
         std::cerr << "Error: Exceeded file size.\n";
         return 4;
     }
@@ -59,7 +68,8 @@ int main(int argc, char *argv[]) {
     // Clean
     file.close();
     delete[] array;
-    std::cout << "\nRead " << n << " double4s from '" << argv[1] <<"'.\n";
+    std::string type_name = (REAL_TYPE ? "double" : "float");
+    std::cout << "\nRead " << n << " " << type_name << "4s from '" << argv[1] <<"'.\n";
     if (selection_option)
         std::cout << "Selected row is " << selected << " and every " << step << " is printed out.\n";
     return 0;

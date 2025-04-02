@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
 
     // calc consts
     const size_t basket_count = myArgs.consts.N;
-    const size_t basket_size  = myArgs.consts.N * sizeof(double4);
+    const size_t basket_size  = myArgs.consts.N * sizeof(real4_t);
     const size_t data_size    = myArgs.consts.M * basket_size;
     const size_t seg_count    = (data_size + SEG_SIZE - 1) / SEG_SIZE;
     const size_t seg_per_turn = TURN_SIZE / SEG_SIZE;
@@ -97,12 +97,12 @@ int main(int argc, char* argv[]) {
     // cuda op
     std::future<void> memcpy_ftr;
 
-    double4 *d_initArray,
+    real4_t *d_initArray,
             *d_dataArray;
     gpuErrChk( cudaMalloc(&d_initArray, basket_size) );
     gpuErrChk( cudaMalloc(&d_dataArray, TURN_SIZE) );
 #if(SEG_SIZE==TURN_SIZE)
-    double4* h_dataArray;
+    real4_t* h_dataArray;
     gpuErrChk( cudaMallocHost(&h_dataArray, SEG_SIZE) );
 #else
     cudaStream_t D2H_streams[seg_per_turn];
