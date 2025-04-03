@@ -2,7 +2,7 @@
 #include <iostream>
 #include <future>
 #include "mmf.hpp"
-#include "../physics_kernel.cuh"
+#include "physics_kernel.cuh"
 
 #define TURN_SIZE (1UL<<31) // GPU: 2 GB
 #define SEG_SIZE  (1UL<<31) // RAM: 2 GB

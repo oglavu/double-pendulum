@@ -31,12 +31,6 @@ CXXFLAGS  := -x c++ -DREAL_TYPE=$(REAL_TYPE)
 PYTHON := $(shell python3 --version >/dev/null 2>&1 && echo python3 || echo python)
 PREPROCESSOR := $(PYTHON) ./replace_greek.py
 
-# Find all .cu and .cuh files
-SHARED_SRCS := $(wildcard $(SRC_DIR)/*.cu) $(wildcard $(SRC_DIR)/*.cpp) $(wildcard $(SRC_DIR)/*.c)
-SHARED_HEDS := $(wildcard $(SRC_DIR)/*.cuh) $(wildcard $(SRC_DIR)/*.hpp) $(wildcard $(SRC_DIR)/*.h)
-SHARED_OBJS := $(SHARED_SRCS:$(SRC_DIR)/%=$(BUILD_DIR)/%.o)
-SHARED_PP_H := $(SHARED_HEDS:$(SRC_DIR)/%=$(BUILD_DIR)/%)
-
 # Default target
 all: storage gen int visual
 
@@ -73,8 +67,8 @@ STORAGE_EXE := $(BIN_DIR)/storage.exe
 
 STORAGE_SRCS = $(wildcard $(SSTORAGE_DIR)/*.cu) $(wildcard $(SSTORAGE_DIR)/*.cpp) $(wildcard $(SSTORAGE_DIR)/*.c)
 STORAGE_HEDS = $(wildcard $(SSTORAGE_DIR)/*.cuh) $(wildcard $(SSTORAGE_DIR)/*.hpp) $(wildcard $(SSTORAGE_DIR)/*.h)
-STORAGE_OBJS = $(STORAGE_SRCS:$(SSTORAGE_DIR)/%=$(BSTORAGE_DIR)/%.o) $(SHARED_OBJS)
-STORAGE_PP_H = $(STORAGE_HEDS:$(SSTORAGE_DIR)/%=$(BSTORAGE_DIR)/%) $(SHARED_PP_H)
+STORAGE_OBJS = $(STORAGE_SRCS:$(SSTORAGE_DIR)/%=$(BSTORAGE_DIR)/%.o)
+STORAGE_PP_H = $(STORAGE_HEDS:$(SSTORAGE_DIR)/%=$(BSTORAGE_DIR)/%)
 
 # Preprocess src/* and src/storage/* files
 $(BUILD_DIR)/%.pp: $(SRC_DIR)/%
@@ -122,15 +116,14 @@ $(INT_EXE): $(BUILD_DIR) $(BIN_DIR) $(INT_PP)
 	$(CXX) $(CXXFLAGS) $(INT_PP) -o $@
 
 
-# Visual output binary
-
+### Build visual.exe
 VISUAL_EXE := $(BIN_DIR)/visual.exe
 
 VISUAL_SRCS := $(wildcard $(SVISUAL_DIR)/*.cu) $(wildcard $(SVISUAL_DIR)/*.cpp) $(wildcard $(SVISUAL_DIR)/*.c)
-VISUAL_HEDS := $(wildcard $(SVISUAL_DIR)/*.cuh) $(wildcard $(SVISUAL_DIR)/*.hpp) $(wildcard $(SVISUAL_DIR)/*.h) $(SHARED_HEDS)
+VISUAL_HEDS := $(patsubst $(SVISUAL_DIR)/%, $(BVISUAL_DIR)/%, $(wildcard $(SVISUAL_DIR)/*.cuh) $(wildcard $(SVISUAL_DIR)/*.hpp) $(wildcard $(SVISUAL_DIR)/*.h))
 VISUAL_OBJS := $(VISUAL_SRCS:$(SVISUAL_DIR)/%=$(BVISUAL_DIR)/%.o) $(SHARED_OBJS)
 
-$(VISUAL_EXE): $(BVISUAL_DIR) $(BIN_DIR) $(SHARED_PP_H) $(VISUAL_OBJS)
+$(VISUAL_EXE): $(BVISUAL_DIR) $(BIN_DIR) $(VISUAL_HEDS) $(VISUAL_OBJS)
 	$(NVCC) $(VISUAL_OBJS) -o $@ $(LDFLAGS)
 
 visual: $(VISUAL_EXE)
@@ -146,8 +139,9 @@ clean-setup:
 
 .PHONY: print-vars
 print-vars:
-	@echo Shared srcs: $(SHARED_SRCS)
-	@echo Shared heds: $(SHARED_HEDS)
+	@echo Storage srcs: $(VISUAL_SRCS)
+	@echo Storage srcs: $(VISUAL_HEDS)
+	@echo Storage srcs: $(VISUAL_OBJS)
 	@echo Storage srcs: $(STORAGE_SRCS)
 	@echo Storage heds: $(STORAGE_HEDS)
 	@echo Storage objs: $(STORAGE_OBJS)
