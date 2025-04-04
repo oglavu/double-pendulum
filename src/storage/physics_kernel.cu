@@ -102,3 +102,7 @@ __global__ void physics_kernel::RK4(real4_t *initArray, real4_t *dataArray) {
     initArray[ix].w = ω2;
     
 }
+
+void physics_kernel::kernel_call(u_int32_t gridSize, u_int32_t blockSize, real4_t* initArray, real4_t* dataArray) {
+    physics_kernel::RK4<<<gridSize, blockSize>>>(initArray, dataArray);
+}

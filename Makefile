@@ -3,16 +3,13 @@ SRC_DIR := ./src
 BUILD_DIR := ./build
 BIN_DIR := ./bin
 TST_DIR := ./test
-LIB_DIR := ./lib
-INC_DIR := ./inc
-TMP_DIR := ./tmp
 
 SSTORAGE_DIR := $(SRC_DIR)/storage
 BSTORAGE_DIR := $(BUILD_DIR)/storage
 SVISUAL_DIR  := $(SRC_DIR)/visual
 BVISUAL_DIR  := $(BUILD_DIR)/visual
 
-LIBS := glfw GL GLEW
+LIBS := glfw GL GLEW cuda cudart
 LIBS_FLAGS := $(addprefix -l,$(LIBS))
 
 CC   := gcc
@@ -24,7 +21,7 @@ CURL := curl
 
 REAL_TYPE ?= 0 # 0-float, 1-double
 
-LDFLAGS   := $(LIBS_FLAGS)
+LDFLAGS   := $(LIBS_FLAGS) -L/usr/local/cuda-12.8/targets/x86_64-linux/lib # should be adjusted
 NVCCFLAGS := --x cu -Wno-deprecated-gpu-targets -DREAL_TYPE=$(REAL_TYPE)
 CXXFLAGS  := -x c++ -DREAL_TYPE=$(REAL_TYPE)
 
@@ -39,15 +36,6 @@ $(BUILD_DIR):
 	mkdir -p $@
 
 $(BIN_DIR):
-	mkdir -p $@
-
-$(LIB_DIR):
-	mkdir -p $@
-
-$(INC_DIR):
-	mkdir -p $@
-
-$(TMP_DIR):
 	mkdir -p $@
 
 $(SSTORAGE_DIR):
@@ -88,7 +76,7 @@ $(BUILD_DIR)/%.c.o: $(BUILD_DIR)/%.c.pp
 
 # Link into final executable
 $(STORAGE_EXE): $(BIN_DIR) $(BUILD_DIR) $(BSTORAGE_DIR) $(STORAGE_PP_H) $(STORAGE_OBJS) 
-	$(NVCC) $(STORAGE_OBJS) -o $@ $(LDFLAGS)
+	$(CXX) $(STORAGE_OBJS) -o $@ $(LDFLAGS)
 	rm -rf $(BIN_DIR)/*.exp $(BIN_DIR)/*.lib
 
 storage: $(STORAGE_EXE)
@@ -124,18 +112,14 @@ VISUAL_HEDS := $(patsubst $(SVISUAL_DIR)/%, $(BVISUAL_DIR)/%, $(wildcard $(SVISU
 VISUAL_OBJS := $(VISUAL_SRCS:$(SVISUAL_DIR)/%=$(BVISUAL_DIR)/%.o) $(SHARED_OBJS)
 
 $(VISUAL_EXE): $(BVISUAL_DIR) $(BIN_DIR) $(VISUAL_HEDS) $(VISUAL_OBJS)
-	$(NVCC) $(VISUAL_OBJS) -o $@ $(LDFLAGS)
+	$(CXX) $(VISUAL_OBJS) -o $@ $(LDFLAGS)
 
 visual: $(VISUAL_EXE)
 
 # Clean
-.PHONY: clean-all
-clean-all:
+.PHONY: clean
+clean:
 	rm -rf $(BIN_DIR) $(BUILD_DIR) *.bin
-
-.PHONY: clean-setup
-clean-setup:
-	rm -rf $(TMP_DIR) $(INC_DIR) $(LIB_DIR)
 
 .PHONY: print-vars
 print-vars:

@@ -1,6 +1,9 @@
-#include <stdio.h>
+#include <memory.h>
+#include <string.h>
 #include <iostream>
 #include <future>
+#include <cuda_runtime.h>
+
 #include "mmf.hpp"
 #include "physics_kernel.cuh"
 
@@ -113,7 +116,7 @@ int main(int argc, char* argv[]) {
 
     for (uint64_t i=0; i<turn_count; ++i) {
         
-        physics_kernel::RK4<<<1, myArgs.consts.N>>>(d_initArray, d_dataArray);
+        physics_kernel::kernel_call(1, myArgs.consts.N, d_initArray, d_dataArray);
         gpuErrChk( cudaPeekAtLastError() );
 
         cudaDeviceSynchronize();
