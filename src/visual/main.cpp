@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
         exit(-1);
     }
 
-    gpuErrChk( cudaGLSetGLDevice(0) );
+    //gpuErrChk( cudaGLSetGLDevice(0) );
 
     physics_kernel::set_constants(myArgs.consts);
 
@@ -122,13 +122,23 @@ int main(int argc, char* argv[]) {
 
     std::cout << "CUDA: New batch calculated\n";
     
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);  // Black background
+    glViewport(0, 0, WIDTH, HEIGHT);
+    double currentTime, deltaTime, previousTime = glfwGetTime();
     while (!glfwWindowShouldClose(window)) {
-        glViewport(0, 0, WIDTH, HEIGHT);
 
-        buffer.draw();
+        currentTime = glfwGetTime();
+        deltaTime = currentTime - previousTime;
+        if (deltaTime > myArgs.consts.h) {
+            previousTime = currentTime;
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
+            buffer.draw();
+    
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+        }
+
     }
     glfwDestroyWindow(window);
     glfwTerminate();

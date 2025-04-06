@@ -28,6 +28,7 @@ private:
     unsigned m_vbo;
     unsigned m_vao;
 
+    mutable size_t m_offset = 0;
     void* m_cudaResource = 0;
     void* m_dcudaArray = 0;
 

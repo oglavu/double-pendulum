@@ -175,14 +175,13 @@ void *StripBufferGL::cuda_map() {
 
 void StripBufferGL::draw() const {
 
-	static int offset(0);
 	static const int counts(lines_per_frame);
 
-	if (offset == 3*counts)
-		offset = 0;
+	if (m_offset == 3 * lines_per_frame * frames_per_buffer)
+		m_offset = 0;
 	
 	int sizes[counts] {3};
-	int starts[counts] {offset};
+	int starts[counts] {(int)m_offset};
 
 	for (int i=1; i<counts; ++i) { 
 		sizes[i] = 3;
@@ -202,7 +201,7 @@ void StripBufferGL::draw() const {
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glCheckErrors(glBindVertexArray(0));
 
-	offset += 3*lines_per_frame;
+	m_offset += 3*counts;
 }
 
 void StripBufferGL::cuda_unmap() {

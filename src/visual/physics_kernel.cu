@@ -102,9 +102,9 @@ __global__ void physics_kernel::RK4(real4_t *initArray, vertex_t *dataArray) {
         real_t x_C = x_B + sin(θ2)/2.0;
         real_t y_C = y_B + cos(θ2)/2.0;
 
-        dataArray[vertex_ix+0] = {record_ix, x_A, y_A};
-        dataArray[vertex_ix+1] = {record_ix, x_B, y_B};
-        dataArray[vertex_ix+2] = {record_ix, x_C, y_C};
+        dataArray[vertex_ix+0] = {record_ix, x_A, -y_A};
+        dataArray[vertex_ix+1] = {record_ix, x_B, -y_B};
+        dataArray[vertex_ix+2] = {record_ix, x_C, -y_C};
     
     }
 
