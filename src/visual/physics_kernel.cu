@@ -61,7 +61,7 @@ __global__ void physics_kernel::RK4(real4_t *initArray, vertex_t *dataArray) {
     // Get thread index in 2D
     real_t t = 0;
     const int record_ix = threadIdx.x;
-    const real_t x_A = 0, y_A = 0;
+    const real_t x_A = 0.0, y_A = 0.0;
 
     real_t θ1 = initArray[record_ix].x,
         θ2 = initArray[record_ix].y,
@@ -97,10 +97,10 @@ __global__ void physics_kernel::RK4(real4_t *initArray, vertex_t *dataArray) {
 
         int vertex_ix = 3*(basket_ix*N + record_ix);
 
-        real_t x_B = x_A + l1*sin(θ1)/2.0;
-        real_t y_B = y_A + l1*cos(θ1)/2.0;
-        real_t x_C = x_B + l2*sin(θ2)/2.0;
-        real_t y_C = y_B + l2*cos(θ2)/2.0;
+        real_t x_B = x_A + sin(θ1)/2.0;
+        real_t y_B = y_A + cos(θ1)/2.0;
+        real_t x_C = x_B + sin(θ2)/2.0;
+        real_t y_C = y_B + cos(θ2)/2.0;
 
         dataArray[vertex_ix+0] = {record_ix, x_A, y_A};
         dataArray[vertex_ix+1] = {record_ix, x_B, y_B};

@@ -148,7 +148,7 @@ StripBufferGL::StripBufferGL(int lines_per_frame):
 	glCheckErrors( glBindBuffer(GL_ARRAY_BUFFER, m_vbo) );
 	glCheckErrors( glBufferData(GL_ARRAY_BUFFER, size, nullptr, GL_DYNAMIC_DRAW) );
 	
-	glCheckErrors( glVertexAttribPointer(0, 1, GL_INT, GL_FALSE, stride1, (void*)offset1) );
+	glCheckErrors( glVertexAttribIPointer(0, 1, GL_INT, stride1, (void*)offset1) );
 	glCheckErrors( glEnableVertexAttribArray(0) );
 	glCheckErrors( glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride2, (void*)offset2) );
 	glCheckErrors( glEnableVertexAttribArray(1) );
