@@ -58,7 +58,7 @@ void read_args(int argc, char* argv[], args_t& myArgs) {
             myArgs.consts.m2 = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-g") == 0) {
             myArgs.consts.g = atof(argv[i+1]);
-        } else if (strcmp(argv[i], "-m2") == 0) {
+        } else if (strcmp(argv[i], "-h") == 0) {
             myArgs.consts.h = atof(argv[i+1]);
         } else if (strcmp(argv[i], "-o" ) == 0) {
             strcpy(myArgs.dstFilename, argv[i+1]);

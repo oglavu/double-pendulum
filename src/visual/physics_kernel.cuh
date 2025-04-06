@@ -50,6 +50,8 @@ namespace physics_kernel {
     __device__ real_t fω2(real_t t, real_t θ1, real_t θ2, real_t ω1, real_t ω2);
     
     __global__ void RK4(real4_t *initArray, vertex_t *dataArray);
+
+    void kernel_call(uint32_t gridSize, uint32_t blockSize, real4_t* initArray, vertex_t* dataArray);
         
 }
 

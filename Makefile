@@ -9,7 +9,7 @@ BSTORAGE_DIR := $(BUILD_DIR)/storage
 SVISUAL_DIR  := $(SRC_DIR)/visual
 BVISUAL_DIR  := $(BUILD_DIR)/visual
 
-LIBS := glfw GL GLEW cuda cudart
+LIBS := glfw GL GLEW GLU cuda cudart
 LIBS_FLAGS := $(addprefix -l,$(LIBS))
 
 CC   := gcc
