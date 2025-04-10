@@ -66,6 +66,8 @@ int mmf::map_file_rd(const char* filename, struct mmf::mmap_t* map) {
     }
 #endif
 
+    printf("MMF: File %s read successfully.\n", filename); 
+
     return 0;
 }
 

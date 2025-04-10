@@ -2,6 +2,7 @@
 #define GL_H
 
 #include <string>
+#include "types.hpp"
 
 class Shader {
 private:
@@ -30,16 +31,18 @@ private:
     unsigned m_vbo[2];
     unsigned m_vao;
 
+    std::future<void> m_fillFuture;
+
     mutable size_t m_offset = 0;
     void* m_cudaResource[2] = {0, 0};
     void* m_dInitArray = 0;
 
     void* cuda_map(int ix);
-    void  cuda_fill(int ix);
+    void  cuda_fill(int ix, bool async = false);
     void  cuda_unmap(int ix);
 
 public:
-    StripBufferGL(int lines_per_frame, void* h_ptr);
+    StripBufferGL(constants_t& consts, void* h_ptr);
 
     void init();
     

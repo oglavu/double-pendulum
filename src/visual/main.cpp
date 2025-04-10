@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <iostream>
 
+#include "types.hpp"
 #include "mmf.hpp"
 #include "gl.hpp"
 
@@ -82,8 +83,6 @@ int main(int argc, char* argv[]) {
         exit(-1);
     }
 
-    physics_kernel::set_constants(myArgs.consts);
-
     glfwSetErrorCallback(error_callback);
     glfwSetKeyCallback(window, key_callback);
 
@@ -99,7 +98,8 @@ int main(int argc, char* argv[]) {
         return -2;
     }
 
-    StripBufferGL buffer(myArgs.consts.N, initMap.h_array);
+    StripBufferGL buffer(myArgs.consts, initMap.h_array);
+    buffer.init();
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);  // Black background
     glViewport(0, 0, WIDTH, HEIGHT);

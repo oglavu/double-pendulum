@@ -3,7 +3,7 @@
 
 using namespace physics_kernel;
 
-void physics_kernel::set_constants(const struct physics_kernel::constants_t& c) {
+void physics_kernel::set_constants(const struct constants_t& c) {
     cudaMemcpyToSymbol(l1, &c.l1, sizeof(real_t));
     cudaMemcpyToSymbol(l2, &c.l2, sizeof(real_t));
     cudaMemcpyToSymbol(m1, &c.m1, sizeof(real_t));
@@ -115,6 +115,6 @@ __global__ void physics_kernel::RK4(real4_t *initArray, vertex_t *dataArray) {
     
 }
 
-void physics_kernel::kernel_call(uint32_t gridSize, uint32_t blockSize, real4_t* initArray, physics_kernel::vertex_t* dataArray) {
+void physics_kernel::kernel_call(uint32_t gridSize, uint32_t blockSize, real4_t* initArray, vertex_t* dataArray) {
     physics_kernel::RK4<<<gridSize, blockSize>>>(initArray, dataArray);
 }

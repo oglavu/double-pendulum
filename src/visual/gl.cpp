@@ -125,10 +125,9 @@ void Shader::uniform(const std::string name, int value) const {
 	glCheckErrors( glUniform1i(glGetUniformLocation(m_programId, name.data()), value) );
 }
 
-StripBufferGL::StripBufferGL(int lines_per_frame, void* h_ptr): 
-	lines_per_frame(lines_per_frame), 
-	frames_per_buffer(1 << 10),
-	m_glIndex(0)
+StripBufferGL::StripBufferGL(constants_t& consts, void* h_ptr): 
+	lines_per_frame(consts.N), 
+	frames_per_buffer(consts.M)
 {
 
     glCheckErrors( glGenBuffers(1, &m_vbo[0]) );
@@ -140,9 +139,9 @@ StripBufferGL::StripBufferGL(int lines_per_frame, void* h_ptr):
 	//     +-------------+ stride2
 	// +---+ offset2
 
-	size_t stride1 = sizeof(physics_kernel::vertex_t),
+	size_t stride1 = sizeof(vertex_t),
 		offset1 = 0,
-		stride2 = sizeof(physics_kernel::vertex_t),
+		stride2 = sizeof(vertex_t),
 		offset2 = sizeof(int);
 
 	size_t size = frames_per_buffer * lines_per_frame * 3 * stride1;
@@ -170,75 +169,71 @@ StripBufferGL::StripBufferGL(int lines_per_frame, void* h_ptr):
 
 	gpuErrChk( cudaMalloc(&m_dInitArray, lines_per_frame * sizeof(real4_t)) );
 	gpuErrChk( cudaMemcpy(m_dInitArray, h_ptr, lines_per_frame*sizeof(real4_t), cudaMemcpyHostToDevice) );
-
+	physics_kernel::set_constants(consts);
 }
 
 void StripBufferGL::init() {
 	cuda_fill(0);
 	cuda_fill(1);
+
+	m_glIndex = 0;
 }
 
 void *StripBufferGL::cuda_map(int ix) {
 	if (ix < 0 || ix > 1) return 0;
+
+	printf("Resource: %lx\n", (size_t)m_cudaResource[ix]);
     
 	gpuErrChk( cudaGraphicsMapResources(1, (cudaGraphicsResource**)&m_cudaResource[ix]) );
 
 	size_t size; void* d_ptr;
 	gpuErrChk( cudaGraphicsResourceGetMappedPointer(&d_ptr, &size, (cudaGraphicsResource*)m_cudaResource[ix]) );
 
+	printf("CUDA: Buffer {%d} mapped\n", ix);
+
 	return d_ptr;
 }
 
-void StripBufferGL::cuda_fill(int ix) {
+void StripBufferGL::cuda_fill(int ix, bool async) {
 
-    auto d_dataArray = (physics_kernel::vertex_t*)cuda_map(ix);
-    physics_kernel::kernel_call(1, lines_per_frame, (real4_t*)m_dInitArray, d_dataArray);
+    auto d_dataArray = (vertex_t*)cuda_map(ix);
+	if (async) {
+		physics_kernel::kernel_call(1, lines_per_frame, (real4_t*)m_dInitArray, d_dataArray);
+	} else {
+		m_fillFuture = std::async(
+			std::launch::async, // launch mode
+			&physics_kernel::kernel_call, // function
+			1, lines_per_frame, (real4_t*)m_dInitArray, d_dataArray	// args
+		);
+	}
     cuda_unmap(ix);
 
-    std::cout << "CUDA: New batch calculated\n";
+    std::cout << "CUDA: New batch calculated in buffer {" << ix << "}\n";
 
 }
 
 void StripBufferGL::cuda_unmap(int ix) {
-
-	// struct vertex_t {
-	// 	int ix; float x,y;
-	// };
-	// size_t size = frames_per_buffer * lines_per_frame * 3 * (2*sizeof(float)+sizeof(int));
-	// char* dst = new char[size];
-
-	// cudaMemcpy(dst, m_dcudaArray, size, cudaMemcpyDeviceToHost);
-
-	// for (int i=0; i<frames_per_buffer*lines_per_frame*3; ++i) {
-	// 	printf("%d %f %f\n", ((vertex_t*)dst)[i].ix, ((vertex_t*)dst)[i].x, ((vertex_t*)dst)[i].y);
-	// }
-
-
 	cudaGraphicsUnmapResources(1, (cudaGraphicsResource_t*)&m_cudaResource[ix]);
-	m_cudaResource[ix] = 0;
 
+	printf("CUDA: Buffer {%d} unmapped\n", ix);
 }
 
 void StripBufferGL::update() {
-
-	static std::future<void> fill_ftr;
 	
 	if (m_offset == 3 * lines_per_frame * frames_per_buffer) {
 		// buffer emptied, time to swap
 		
-		if (fill_ftr.valid()) 
-			fill_ftr.wait(); 		// wait for a full buffer	
+		if (m_fillFuture.valid()) 
+			m_fillFuture.wait(); 		// wait for a full buffer	
 		
 		int cudaIndex = m_glIndex;	// set empty buffer for refill
 		m_glIndex = (!m_glIndex);	// switch OpenGL buffer
 		
-		fill_ftr = std::async(
-			std::launch::async, 		// launch mode
-			&StripBufferGL::cuda_fill,  // function
-			this, cudaIndex				// args
-		);
+
 
 		m_offset = 0;
+
+		printf("OpenGL: Switched buffers {%d}->{%d}\n", cudaIndex, m_glIndex);
 	}
 
 }
