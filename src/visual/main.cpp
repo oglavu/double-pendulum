@@ -3,16 +3,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <iostream>
-#include <cuda_runtime.h>
-#include <cuda_gl_interop.h>
 
 #include "mmf.hpp"
 #include "gl.hpp"
 
-#include "physics_kernel.cuh"
-
 struct args_t {
-    physics_kernel::constants_t consts = {
+    constants_t consts = {
         1, 1,  // l1, l2
         1, 1,  // m1, m2
         0.025, // h
@@ -64,15 +60,6 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
         glfwSetWindowShouldClose(window, GL_TRUE);
 }
 
-
-#define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-static inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true) {
-   if (code != cudaSuccess) {
-      std::cerr << "GPUassert: " << cudaGetErrorString(code) << " " << file << " " << line << std::endl;
-      if (abort) exit(code);
-   }
-}
-
 static const int WIDTH=640, HEIGHT=480;
 
 int main(int argc, char* argv[]) {
@@ -95,8 +82,6 @@ int main(int argc, char* argv[]) {
         exit(-1);
     }
 
-    //gpuErrChk( cudaGLSetGLDevice(0) );
-
     physics_kernel::set_constants(myArgs.consts);
 
     glfwSetErrorCallback(error_callback);
@@ -109,19 +94,13 @@ int main(int argc, char* argv[]) {
     size_t basket_count = myArgs.consts.N;
     size_t basket_size  = basket_count * sizeof(real4_t);
 
-    real4_t* d_initArray; mmf::mmap_t initMap; initMap.sz = basket_size;
-    cudaMalloc((void**)&d_initArray, basket_size);
-    mmf::map_file_rd(myArgs.srcFilename, &initMap);
-    cudaMemcpy(d_initArray, initMap.h_array, basket_size, cudaMemcpyHostToDevice);
+    mmf::mmap_t initMap; initMap.sz = basket_size;
+    if (mmf::map_file_rd(myArgs.srcFilename, &initMap) < 0) {
+        return -2;
+    }
 
-    StripBufferGL buffer(myArgs.consts.N);
+    StripBufferGL buffer(myArgs.consts.N, initMap.h_array);
 
-    auto d_dataArray = (physics_kernel::vertex_t*)buffer.cuda_map();
-    physics_kernel::kernel_call(1, myArgs.consts.N, d_initArray, d_dataArray);
-    buffer.cuda_unmap();
-
-    std::cout << "CUDA: New batch calculated\n";
-    
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);  // Black background
     glViewport(0, 0, WIDTH, HEIGHT);
     double currentTime, deltaTime, previousTime = glfwGetTime();
@@ -132,6 +111,8 @@ int main(int argc, char* argv[]) {
         if (deltaTime > myArgs.consts.h) {
             previousTime = currentTime;
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            buffer.update();
 
             buffer.draw();
     

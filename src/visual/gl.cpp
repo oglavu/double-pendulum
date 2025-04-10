@@ -2,10 +2,13 @@
 
 #include <iostream>
 #include <fstream>
+#include <future>
 #include <sstream>
 #include <memory.h>
 #include <GL/glew.h>
 #include <cuda_gl_interop.h>
+
+#include "physics_kernel.cuh"
 
 #define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 static inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true) {
@@ -122,13 +125,14 @@ void Shader::uniform(const std::string name, int value) const {
 	glCheckErrors( glUniform1i(glGetUniformLocation(m_programId, name.data()), value) );
 }
 
+StripBufferGL::StripBufferGL(int lines_per_frame, void* h_ptr): 
+	lines_per_frame(lines_per_frame), 
+	frames_per_buffer(1 << 10),
+	m_glIndex(0)
+{
 
-
-
-StripBufferGL::StripBufferGL(int lines_per_frame): 
-		lines_per_frame(lines_per_frame), frames_per_buffer(1<<10) {
-	
-	glCheckErrors( glGenBuffers(1, &m_vbo) );
+    glCheckErrors( glGenBuffers(1, &m_vbo[0]) );
+	glCheckErrors( glGenBuffers(1, &m_vbo[1]) );
 	glCheckErrors( glGenVertexArrays(1, &m_vao) );
 
 	// ix1 x_A1 y_A1 ix1 x_B1 y_B1 ix1 x_C1 y_C1
@@ -136,16 +140,18 @@ StripBufferGL::StripBufferGL(int lines_per_frame):
 	//     +-------------+ stride2
 	// +---+ offset2
 
-	size_t stride1 = 2*sizeof(float)+sizeof(int),
+	size_t stride1 = sizeof(physics_kernel::vertex_t),
 		offset1 = 0,
-		stride2 = 2*sizeof(float)+sizeof(int),
+		stride2 = sizeof(physics_kernel::vertex_t),
 		offset2 = sizeof(int);
 
 	size_t size = frames_per_buffer * lines_per_frame * 3 * stride1;
 
 	glCheckErrors( glBindVertexArray(m_vao) );
 	
-	glCheckErrors( glBindBuffer(GL_ARRAY_BUFFER, m_vbo) );
+	glCheckErrors( glBindBuffer(GL_ARRAY_BUFFER, m_vbo[0]) );
+	glCheckErrors( glBufferData(GL_ARRAY_BUFFER, size, nullptr, GL_DYNAMIC_DRAW) );
+	glCheckErrors( glBindBuffer(GL_ARRAY_BUFFER, m_vbo[1]) );
 	glCheckErrors( glBufferData(GL_ARRAY_BUFFER, size, nullptr, GL_DYNAMIC_DRAW) );
 	
 	glCheckErrors( glVertexAttribIPointer(0, 1, GL_INT, stride1, (void*)offset1) );
@@ -157,54 +163,43 @@ StripBufferGL::StripBufferGL(int lines_per_frame):
 	glCheckErrors( glBindVertexArray(0) );
 	glCheckErrors( glBindBuffer(GL_ARRAY_BUFFER, 0) );
 
-	gpuErrChk( cudaGraphicsGLRegisterBuffer((cudaGraphicsResource**)&m_cudaResource, m_vbo, cudaGraphicsRegisterFlagsWriteDiscard) );
+	gpuErrChk( cudaGraphicsGLRegisterBuffer((cudaGraphicsResource**)&m_cudaResource[0], m_vbo[0], cudaGraphicsRegisterFlagsWriteDiscard) );
+	printf("CUDA: Registered OpenGL buffer (0x%lx)\n", (size_t)m_cudaResource[0]);
+	gpuErrChk( cudaGraphicsGLRegisterBuffer((cudaGraphicsResource**)&m_cudaResource[1], m_vbo[1], cudaGraphicsRegisterFlagsWriteDiscard) );
+	printf("CUDA: Registered OpenGL buffer (0x%lx)\n", (size_t)m_cudaResource[1]);
 
-	printf("CUDA: Registered OpenGL buffer (0x%lx)\n", (size_t)m_cudaResource);
+	gpuErrChk( cudaMalloc(&m_dInitArray, lines_per_frame * sizeof(real4_t)) );
+	gpuErrChk( cudaMemcpy(m_dInitArray, h_ptr, lines_per_frame*sizeof(real4_t), cudaMemcpyHostToDevice) );
 
 }
 
-void *StripBufferGL::cuda_map() {
+void StripBufferGL::init() {
+	cuda_fill(0);
+	cuda_fill(1);
+}
+
+void *StripBufferGL::cuda_map(int ix) {
+	if (ix < 0 || ix > 1) return 0;
     
-	gpuErrChk( cudaGraphicsMapResources(1, (cudaGraphicsResource**)&m_cudaResource) );
+	gpuErrChk( cudaGraphicsMapResources(1, (cudaGraphicsResource**)&m_cudaResource[ix]) );
 
-	size_t size;
-	gpuErrChk( cudaGraphicsResourceGetMappedPointer(&m_dcudaArray, &size, (cudaGraphicsResource*)m_cudaResource) );
+	size_t size; void* d_ptr;
+	gpuErrChk( cudaGraphicsResourceGetMappedPointer(&d_ptr, &size, (cudaGraphicsResource*)m_cudaResource[ix]) );
 
-	return m_dcudaArray;
+	return d_ptr;
 }
 
-void StripBufferGL::draw() const {
+void StripBufferGL::cuda_fill(int ix) {
 
-	static const int counts(lines_per_frame);
+    auto d_dataArray = (physics_kernel::vertex_t*)cuda_map(ix);
+    physics_kernel::kernel_call(1, lines_per_frame, (real4_t*)m_dInitArray, d_dataArray);
+    cuda_unmap(ix);
 
-	if (m_offset == 3 * lines_per_frame * frames_per_buffer)
-		m_offset = 0;
-	
-	int sizes[counts] {3};
-	int starts[counts] {(int)m_offset};
+    std::cout << "CUDA: New batch calculated\n";
 
-	for (int i=1; i<counts; ++i) { 
-		sizes[i] = 3;
-		starts[i] = starts[i-1] + sizes[i];
-	}
-
-	// printf("starts\tsizes\n");
-	// for (int i=0; i<counts; i++) {
-	// 	printf("%d\t%d\n", starts[i], sizes[i]);
-	// }
-  
-	glBindVertexArray(m_vao);
-	glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-
-	glMultiDrawArrays(GL_LINE_STRIP, starts, sizes, counts);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glCheckErrors(glBindVertexArray(0));
-
-	m_offset += 3*counts;
 }
 
-void StripBufferGL::cuda_unmap() {
+void StripBufferGL::cuda_unmap(int ix) {
 
 	// struct vertex_t {
 	// 	int ix; float x,y;
@@ -219,13 +214,67 @@ void StripBufferGL::cuda_unmap() {
 	// }
 
 
-	cudaGraphicsUnmapResources(1, (cudaGraphicsResource_t*)&m_cudaResource);
-	m_cudaResource = 0;
+	cudaGraphicsUnmapResources(1, (cudaGraphicsResource_t*)&m_cudaResource[ix]);
+	m_cudaResource[ix] = 0;
 
 }
 
+void StripBufferGL::update() {
+
+	static std::future<void> fill_ftr;
+	
+	if (m_offset == 3 * lines_per_frame * frames_per_buffer) {
+		// buffer emptied, time to swap
+		
+		if (fill_ftr.valid()) 
+			fill_ftr.wait(); 		// wait for a full buffer	
+		
+		int cudaIndex = m_glIndex;	// set empty buffer for refill
+		m_glIndex = (!m_glIndex);	// switch OpenGL buffer
+		
+		fill_ftr = std::async(
+			std::launch::async, 		// launch mode
+			&StripBufferGL::cuda_fill,  // function
+			this, cudaIndex				// args
+		);
+
+		m_offset = 0;
+	}
+
+}
+
+void StripBufferGL::draw() const {
+
+	static const int counts(lines_per_frame);
+		
+	int sizes[counts] {3};
+	int starts[counts] {(int)m_offset};
+
+	for (int i=1; i<counts; ++i) { 
+		sizes[i] = 3;
+		starts[i] = starts[i-1] + sizes[i];
+	}
+
+	// printf("starts\tsizes\n");
+	// for (int i=0; i<counts; i++) {
+	// 	printf("%d\t%d\n", starts[i], sizes[i]);
+	// }
+  
+	glBindVertexArray(m_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, m_vbo[m_glIndex]);
+
+	glMultiDrawArrays(GL_LINE_STRIP, starts, sizes, counts);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glCheckErrors(glBindVertexArray(0));
+
+	m_offset += 3*counts;
+}
+
 StripBufferGL::~StripBufferGL() {
-	cudaGraphicsUnregisterResource(*(cudaGraphicsResource_t*)m_cudaResource);
-	glDeleteBuffers(1, &m_vbo);
+	cudaGraphicsUnregisterResource(*(cudaGraphicsResource_t*)m_cudaResource[0]);
+	cudaGraphicsUnregisterResource(*(cudaGraphicsResource_t*)m_cudaResource[1]);
+	glDeleteBuffers(1, &m_vbo[0]);
+	glDeleteBuffers(1, &m_vbo[1]);
 	glDeleteBuffers(1, &m_vao);
 }

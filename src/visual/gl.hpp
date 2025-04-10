@@ -25,21 +25,27 @@ class StripBufferGL {
 private:
     const int lines_per_frame, frames_per_buffer;
 
-    unsigned m_vbo;
+    int m_glIndex = -1;
+
+    unsigned m_vbo[2];
     unsigned m_vao;
 
     mutable size_t m_offset = 0;
-    void* m_cudaResource = 0;
-    void* m_dcudaArray = 0;
+    void* m_cudaResource[2] = {0, 0};
+    void* m_dInitArray = 0;
+
+    void* cuda_map(int ix);
+    void  cuda_fill(int ix);
+    void  cuda_unmap(int ix);
 
 public:
-    StripBufferGL(int lines_per_frame);
+    StripBufferGL(int lines_per_frame, void* h_ptr);
+
+    void init();
     
-    void* cuda_map();
+    void update();
 
     void draw() const;
-
-    void cuda_unmap();
 
     ~StripBufferGL();
 };
