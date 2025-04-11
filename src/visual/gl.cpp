@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <fstream>
-#include <future>
 #include <sstream>
 #include <memory.h>
 #include <GL/glew.h>
@@ -173,7 +172,7 @@ StripBufferGL::StripBufferGL(constants_t& consts, void* h_ptr):
 }
 
 void StripBufferGL::init() {
-	cuda_fill(0);
+	cuda_fill(0, false);
 	cuda_fill(1);
 
 	m_glIndex = 0;
@@ -181,8 +180,6 @@ void StripBufferGL::init() {
 
 void *StripBufferGL::cuda_map(int ix) {
 	if (ix < 0 || ix > 1) return 0;
-
-	printf("Resource: %lx\n", (size_t)m_cudaResource[ix]);
     
 	gpuErrChk( cudaGraphicsMapResources(1, (cudaGraphicsResource**)&m_cudaResource[ix]) );
 
@@ -196,74 +193,79 @@ void *StripBufferGL::cuda_map(int ix) {
 
 void StripBufferGL::cuda_fill(int ix, bool async) {
 
-    auto d_dataArray = (vertex_t*)cuda_map(ix);
-	if (async) {
-		physics_kernel::kernel_call(1, lines_per_frame, (real4_t*)m_dInitArray, d_dataArray);
-	} else {
-		m_fillFuture = std::async(
-			std::launch::async, // launch mode
-			&physics_kernel::kernel_call, // function
-			1, lines_per_frame, (real4_t*)m_dInitArray, d_dataArray	// args
-		);
-	}
-    cuda_unmap(ix);
+	void* d_dataArray = cuda_map(ix);
+	m_fillFuture = std::async(
+		std::launch::async,
+		&physics_kernel::kernel_call,
+		1, lines_per_frame, (real4_t*)m_dInitArray, (vertex_t*)d_dataArray
+	);
 
-    std::cout << "CUDA: New batch calculated in buffer {" << ix << "}\n";
+	if (!async) {
+		cudaDeviceSynchronize();
+		cuda_unmap(ix);
+	}
 
 }
 
 void StripBufferGL::cuda_unmap(int ix) {
-	cudaGraphicsUnmapResources(1, (cudaGraphicsResource_t*)&m_cudaResource[ix]);
 
+	// size_t count = 3*lines_per_frame*frames_per_buffer;
+	// vertex_t* dst = new vertex_t[count];
+	// cudaMemcpy(dst, m_dataArray, count*sizeof(vertex_t), cudaMemcpyDeviceToHost);
+	// for (int i=0; i<count; ++i) {
+	// 	printf("%d %f %f\n", dst[i].ix, dst[i].x, dst[i].y);
+	// }
+	// delete dst;
+
+	gpuErrChk( cudaGraphicsUnmapResources(1, (cudaGraphicsResource_t*)&m_cudaResource[ix]) );
 	printf("CUDA: Buffer {%d} unmapped\n", ix);
 }
 
 void StripBufferGL::update() {
+	static const size_t max = 3 * lines_per_frame * frames_per_buffer;
 	
-	if (m_offset == 3 * lines_per_frame * frames_per_buffer) {
+	if (m_offset == max) {
 		// buffer emptied, time to swap
-		
-		if (m_fillFuture.valid()) 
-			m_fillFuture.wait(); 		// wait for a full buffer	
-		
-		int cudaIndex = m_glIndex;	// set empty buffer for refill
-		m_glIndex = (!m_glIndex);	// switch OpenGL buffer
-		
 
+		int glIndex = (!m_glIndex); // set full buffer for emptying
+		int cudaIndex = m_glIndex;  // set empty buffer for refill
+		
+		if (m_fillFuture.valid()) {
+			m_fillFuture.wait(); // wait for a full buffer	
+			cuda_unmap(glIndex);
+		}
 
+		m_glIndex = glIndex; // switch OpenGL buffer
 		m_offset = 0;
 
-		printf("OpenGL: Switched buffers {%d}->{%d}\n", cudaIndex, m_glIndex);
+		cuda_fill(cudaIndex);
+
+		printf("OpenGL: Switched buffers {%d}->{%d}\n", cudaIndex, glIndex);
 	}
 
 }
 
 void StripBufferGL::draw() const {
 
-	static const int counts(lines_per_frame);
+	static const int count(lines_per_frame);
 		
-	int sizes[counts] {3};
-	int starts[counts] {(int)m_offset};
+	int sizes[count] {3};
+	int starts[count] {(int)m_offset};
 
-	for (int i=1; i<counts; ++i) { 
+	for (int i=1; i<count; ++i) { 
 		sizes[i] = 3;
 		starts[i] = starts[i-1] + sizes[i];
 	}
-
-	// printf("starts\tsizes\n");
-	// for (int i=0; i<counts; i++) {
-	// 	printf("%d\t%d\n", starts[i], sizes[i]);
-	// }
   
 	glBindVertexArray(m_vao);
 	glBindBuffer(GL_ARRAY_BUFFER, m_vbo[m_glIndex]);
 
-	glMultiDrawArrays(GL_LINE_STRIP, starts, sizes, counts);
+	glMultiDrawArrays(GL_LINE_STRIP, starts, sizes, count);
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glCheckErrors(glBindVertexArray(0));
 
-	m_offset += 3*counts;
+	m_offset += 3*count;
 }
 
 StripBufferGL::~StripBufferGL() {

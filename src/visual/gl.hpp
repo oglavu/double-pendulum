@@ -2,6 +2,7 @@
 #define GL_H
 
 #include <string>
+#include <future>
 #include "types.hpp"
 
 class Shader {
@@ -38,7 +39,7 @@ private:
     void* m_dInitArray = 0;
 
     void* cuda_map(int ix);
-    void  cuda_fill(int ix, bool async = false);
+    void  cuda_fill(int ix, bool async = true);
     void  cuda_unmap(int ix);
 
 public:
